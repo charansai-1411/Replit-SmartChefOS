@@ -15,18 +15,21 @@ export const dishes = pgTable("dishes", {
 
 export const orders = pgTable("orders", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  customerId: varchar("customer_id").references(() => customers.id),
   tableNumber: text("table_number"),
   guests: integer("guests").default(1),
   type: text("type").notNull(),
   status: text("status").notNull(),
+  total: decimal("total", { precision: 10, scale: 2 }).default("0"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
 export const orderItems = pgTable("order_items", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  orderId: varchar("order_id").notNull(),
-  dishId: varchar("dish_id").notNull(),
+  orderId: varchar("order_id").notNull().references(() => orders.id, { onDelete: 'cascade' }),
+  dishId: varchar("dish_id").notNull().references(() => dishes.id),
   quantity: integer("quantity").notNull(),
+  price: decimal("price", { precision: 10, scale: 2 }).notNull(),
   notes: text("notes"),
 });
 
@@ -39,9 +42,11 @@ export const customers = pgTable("customers", {
 });
 
 export const insertDishSchema = createInsertSchema(dishes).omit({ id: true });
+export const updateDishSchema = insertDishSchema.partial();
 export const insertOrderSchema = createInsertSchema(orders).omit({ id: true, createdAt: true });
 export const insertOrderItemSchema = createInsertSchema(orderItems).omit({ id: true });
 export const insertCustomerSchema = createInsertSchema(customers).omit({ id: true });
+export const updateCustomerSchema = insertCustomerSchema.partial();
 
 export type Dish = typeof dishes.$inferSelect;
 export type InsertDish = z.infer<typeof insertDishSchema>;

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { DishManagementCard } from "@/components/DishManagementCard";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -6,46 +6,40 @@ import { Card } from "@/components/ui/card";
 import { Plus, Search } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
-
-import paneerImage from '@assets/generated_images/Paneer_Butter_Masala_dish_80e08089.png';
-import biryaniImage from '@assets/generated_images/Chicken_Biryani_dish_b8f84884.png';
-import dosaImage from '@assets/generated_images/Masala_Dosa_breakfast_ea9368d7.png';
-import dalImage from '@assets/generated_images/Dal_Makhani_dish_a3d3465f.png';
-import tikkaImage from '@assets/generated_images/Chicken_Tikka_appetizer_4e11fe1a.png';
-import kormaImage from '@assets/generated_images/Vegetable_Korma_curry_15f74555.png';
-import gulabImage from '@assets/generated_images/Gulab_Jamun_dessert_982a82a2.png';
-import butterChickenImage from '@assets/generated_images/Butter_Chicken_dish_96465dab.png';
-
-const mockDishes = [
-  { id: '1', name: 'Paneer Butter Masala', price: 320, category: 'Paneer', image: paneerImage, veg: true, available: true },
-  { id: '2', name: 'Chicken Biryani', price: 450, category: 'Biryani', image: biryaniImage, veg: false, available: true },
-  { id: '3', name: 'Masala Dosa', price: 180, category: 'South Indian', image: dosaImage, veg: true, available: true },
-  { id: '4', name: 'Dal Makhani', price: 280, category: 'Dal', image: dalImage, veg: true, available: false },
-  { id: '5', name: 'Chicken Tikka', price: 380, category: 'Starters', image: tikkaImage, veg: false, available: true },
-  { id: '6', name: 'Vegetable Korma', price: 300, category: 'Curry', image: kormaImage, veg: true, available: true },
-  { id: '7', name: 'Gulab Jamun', price: 120, category: 'Desserts', image: gulabImage, veg: true, available: true },
-  { id: '8', name: 'Butter Chicken', price: 420, category: 'Chicken', image: butterChickenImage, veg: false, available: true },
-];
-
-const categories = [
-  { name: 'All Dishes', count: 24 },
-  { name: 'Starters', count: 8 },
-  { name: 'Paneer', count: 5 },
-  { name: 'Chicken', count: 6 },
-  { name: 'Biryani', count: 4 },
-  { name: 'Curry', count: 7 },
-  { name: 'Dal', count: 3 },
-  { name: 'South Indian', count: 5 },
-  { name: 'Desserts', count: 6 },
-];
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import type { Dish } from "@shared/schema";
 
 export default function ManageDishes() {
   const [selectedCategory, setSelectedCategory] = useState('All Dishes');
   const [searchQuery, setSearchQuery] = useState('');
   const { toast } = useToast();
 
+  const { data: dishes = [], isLoading } = useQuery<Dish[]>({
+    queryKey: ['/api/dishes'],
+  });
+
+  const updateDishMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: Partial<Dish> }) => {
+      return await apiRequest('PATCH', `/api/dishes/${id}`, data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/dishes'] });
+    },
+  });
+
+  const deleteDishMutation = useMutation({
+    mutationFn: async (id: string) => {
+      return await apiRequest('DELETE', `/api/dishes/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/dishes'] });
+    },
+  });
+
   const handleToggleAvailability = (id: string, available: boolean) => {
-    const dish = mockDishes.find(d => d.id === id);
+    const dish = dishes.find(d => d.id === id);
+    updateDishMutation.mutate({ id, data: { available } });
     toast({ 
       description: `${dish?.name} is now ${available ? 'available' : 'unavailable'}` 
     });
@@ -56,12 +50,38 @@ export default function ManageDishes() {
   };
 
   const handleDelete = (id: string) => {
-    const dish = mockDishes.find(d => d.id === id);
-    toast({ 
-      description: `${dish?.name} deleted`,
-      variant: "destructive"
-    });
+    const dish = dishes.find(d => d.id === id);
+    if (confirm(`Delete ${dish?.name}?`)) {
+      deleteDishMutation.mutate(id);
+      toast({ 
+        description: `${dish?.name} deleted`,
+        variant: "destructive"
+      });
+    }
   };
+
+  const categories = useMemo(() => {
+    const categoryMap = new Map<string, number>();
+    categoryMap.set('All Dishes', dishes.length);
+    
+    dishes.forEach(dish => {
+      categoryMap.set(dish.category, (categoryMap.get(dish.category) || 0) + 1);
+    });
+    
+    return Array.from(categoryMap.entries()).map(([name, count]) => ({ name, count }));
+  }, [dishes]);
+
+  const filteredDishes = useMemo(() => {
+    return dishes.filter(dish => {
+      const matchesCategory = selectedCategory === 'All Dishes' || dish.category === selectedCategory;
+      const matchesSearch = dish.name.toLowerCase().includes(searchQuery.toLowerCase());
+      return matchesCategory && matchesSearch;
+    });
+  }, [dishes, selectedCategory, searchQuery]);
+
+  if (isLoading) {
+    return <div className="flex items-center justify-center h-full">Loading...</div>;
+  }
 
   return (
     <div className="flex gap-6 p-6 h-full overflow-hidden">
@@ -111,13 +131,15 @@ export default function ManageDishes() {
 
         <div>
           <h2 className="text-lg font-semibold mb-4">
-            {selectedCategory} <Badge variant="secondary" className="ml-2">{mockDishes.length}</Badge>
+            {selectedCategory} <Badge variant="secondary" className="ml-2">{filteredDishes.length}</Badge>
           </h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {mockDishes.map((dish) => (
+            {filteredDishes.map((dish) => (
               <DishManagementCard
                 key={dish.id}
                 {...dish}
+                image={dish.image || ''}
+                price={parseFloat(dish.price)}
                 onToggleAvailability={handleToggleAvailability}
                 onEdit={handleEdit}
                 onDelete={handleDelete}

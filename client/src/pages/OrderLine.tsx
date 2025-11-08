@@ -7,33 +7,10 @@ import { CartPanel } from "@/components/CartPanel";
 import { Grid, List, SlidersHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-
-import paneerImage from '@assets/generated_images/Paneer_Butter_Masala_dish_80e08089.png';
-import biryaniImage from '@assets/generated_images/Chicken_Biryani_dish_b8f84884.png';
-import dosaImage from '@assets/generated_images/Masala_Dosa_breakfast_ea9368d7.png';
-import dalImage from '@assets/generated_images/Dal_Makhani_dish_a3d3465f.png';
-import tikkaImage from '@assets/generated_images/Chicken_Tikka_appetizer_4e11fe1a.png';
-import kormaImage from '@assets/generated_images/Vegetable_Korma_curry_15f74555.png';
-import gulabImage from '@assets/generated_images/Gulab_Jamun_dessert_982a82a2.png';
-import butterChickenImage from '@assets/generated_images/Butter_Chicken_dish_96465dab.png';
-
-// Mock data
-const mockDishes = [
-  { id: '1', name: 'Paneer Butter Masala', price: 320, category: 'Paneer', image: paneerImage, veg: true, available: true },
-  { id: '2', name: 'Chicken Biryani', price: 450, category: 'Biryani', image: biryaniImage, veg: false, available: true },
-  { id: '3', name: 'Masala Dosa', price: 180, category: 'South Indian', image: dosaImage, veg: true, available: true },
-  { id: '4', name: 'Dal Makhani', price: 280, category: 'Dal', image: dalImage, veg: true, available: true },
-  { id: '5', name: 'Chicken Tikka', price: 380, category: 'Starters', image: tikkaImage, veg: false, available: true },
-  { id: '6', name: 'Vegetable Korma', price: 300, category: 'Curry', image: kormaImage, veg: true, available: true },
-  { id: '7', name: 'Gulab Jamun', price: 120, category: 'Desserts', image: gulabImage, veg: true, available: true },
-  { id: '8', name: 'Butter Chicken', price: 420, category: 'Chicken', image: butterChickenImage, veg: false, available: true },
-];
-
-const mockOrders = [
-  { orderNumber: 'Order #F0027', table: 'Table 03', itemCount: 8, status: 'In Kitchen', time: '2 mins ago' },
-  { orderNumber: 'Order #F0028', table: 'Table 07', itemCount: 3, status: 'Ready', time: 'Just Now' },
-  { orderNumber: 'Order #F0019', table: 'Table 09', itemCount: 2, status: 'Wait List', time: '25 mins ago' },
-];
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import type { Dish, Order } from "@shared/schema";
+import { formatDistanceToNow } from "date-fns";
 
 interface CartItem {
   id: string;
@@ -47,20 +24,44 @@ export default function OrderLine() {
   const [activeCategory, setActiveCategory] = useState('All');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [cart, setCart] = useState<CartItem[]>([]);
+  const [tableNumber, setTableNumber] = useState('04');
+  const [guests, setGuests] = useState(2);
   const { toast } = useToast();
 
+  const { data: dishes = [], isLoading: dishesLoading } = useQuery<Dish[]>({
+    queryKey: ['/api/dishes'],
+  });
+
+  const { data: orders = [] } = useQuery<Order[]>({
+    queryKey: ['/api/orders'],
+  });
+
+  const createOrderMutation = useMutation({
+    mutationFn: async (orderData: { order: any; items: any[] }) => {
+      return await apiRequest('POST', '/api/orders', orderData);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/orders'] });
+    },
+  });
+
   const statusCounts = {
-    all: 12,
-    'dine-in': 5,
-    waitlist: 2,
-    takeaway: 3,
-    served: 2,
+    all: orders.length,
+    'dine-in': orders.filter(o => o.type === 'dine-in').length,
+    waitlist: orders.filter(o => o.status === 'waitlist').length,
+    takeaway: orders.filter(o => o.type === 'takeaway').length,
+    served: orders.filter(o => o.status === 'served').length,
   };
 
-  const categories = ['All', 'Specials', 'Starters', 'Paneer', 'Chicken', 'Biryani', 'Curry', 'Dal', 'South Indian', 'Desserts'];
+  const categories = ['All', ...Array.from(new Set(dishes.map(d => d.category)))];
+
+  const filteredDishes = dishes.filter(dish => {
+    if (activeCategory === 'All') return dish.available;
+    return dish.category === activeCategory && dish.available;
+  });
 
   const handleQuantityChange = (dishId: string, quantity: number) => {
-    const dish = mockDishes.find(d => d.id === dishId);
+    const dish = dishes.find(d => d.id === dishId);
     if (!dish) return;
 
     if (quantity === 0) {
@@ -73,7 +74,12 @@ export default function OrderLine() {
           item.id === dishId ? { ...item, quantity } : item
         ));
       } else {
-        setCart([...cart, { id: dishId, name: dish.name, price: dish.price, quantity }]);
+        setCart([...cart, { 
+          id: dishId, 
+          name: dish.name, 
+          price: parseFloat(dish.price), 
+          quantity 
+        }]);
         toast({ description: `${dish.name} added to cart` });
       }
     }
@@ -93,12 +99,42 @@ export default function OrderLine() {
     setCart(cart.filter(item => item.id !== id));
   };
 
-  const handlePlaceOrder = () => {
-    toast({ 
-      title: "Order Placed!", 
-      description: `Order #F0030 sent to kitchen` 
-    });
-    setCart([]);
+  const handlePlaceOrder = async () => {
+    if (cart.length === 0) {
+      toast({ 
+        description: "Cart is empty",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    const orderData = {
+      order: {
+        tableNumber,
+        guests,
+        type: 'dine-in',
+        status: 'pending',
+      },
+      items: cart.map(item => ({
+        dishId: item.id,
+        quantity: item.quantity,
+        notes: '',
+      })),
+    };
+
+    try {
+      await createOrderMutation.mutateAsync(orderData);
+      toast({ 
+        title: "Order Placed!", 
+        description: `Order sent to kitchen` 
+      });
+      setCart([]);
+    } catch (error) {
+      toast({ 
+        description: "Failed to place order",
+        variant: "destructive"
+      });
+    }
   };
 
   // Keyboard shortcuts
@@ -120,6 +156,15 @@ export default function OrderLine() {
     return () => window.removeEventListener('keydown', handleKeyPress);
   }, [toast]);
 
+  // Get current quantity for each dish from cart
+  const getDishQuantity = (dishId: string) => {
+    return cart.find(item => item.id === dishId)?.quantity || 0;
+  };
+
+  if (dishesLoading) {
+    return <div className="flex items-center justify-center h-full">Loading...</div>;
+  }
+
   return (
     <div className="flex gap-6 p-6 h-full overflow-hidden">
       <div className="flex-1 overflow-y-auto space-y-6">
@@ -135,8 +180,15 @@ export default function OrderLine() {
         <div>
           <h2 className="text-sm font-medium text-muted-foreground mb-3">Active Orders</h2>
           <div className="flex gap-4 overflow-x-auto pb-2">
-            {mockOrders.map((order, idx) => (
-              <OrderCard key={idx} {...order} />
+            {orders.slice(0, 5).map((order) => (
+              <OrderCard 
+                key={order.id}
+                orderNumber={`Order #${order.id.slice(0, 6)}`}
+                table={order.tableNumber || 'Takeaway'}
+                itemCount={order.guests || 1}
+                status={order.status === 'pending' ? 'In Kitchen' : order.status}
+                time={formatDistanceToNow(new Date(order.createdAt), { addSuffix: true })}
+              />
             ))}
           </div>
         </div>
@@ -175,11 +227,13 @@ export default function OrderLine() {
         </div>
 
         <div className={`grid ${viewMode === 'grid' ? 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3' : 'grid-cols-1'} gap-4`}>
-          {mockDishes.map((dish) => (
+          {filteredDishes.map((dish) => (
             <ItemCard
               key={dish.id}
               {...dish}
-              onQuantityChange={handleQuantityChange}
+              image={dish.image || ''}
+              price={parseFloat(dish.price)}
+              onQuantityChange={(id, qty) => handleQuantityChange(id, qty)}
             />
           ))}
         </div>
@@ -188,8 +242,8 @@ export default function OrderLine() {
       <div className="w-full max-w-md">
         <CartPanel
           items={cart}
-          tableNumber="04"
-          guests={2}
+          tableNumber={tableNumber}
+          guests={guests}
           onUpdateQuantity={handleCartUpdate}
           onRemoveItem={handleRemoveFromCart}
           onPlaceOrder={handlePlaceOrder}

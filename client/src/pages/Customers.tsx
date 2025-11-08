@@ -4,24 +4,32 @@ import { Button } from "@/components/ui/button";
 import { Search, Plus } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-
-const mockCustomers = [
-  { id: '1', name: 'Rajesh Kumar', phone: '+91 98765 43210', lastVisit: '2 days ago', lifetimeValue: '₹45,000', favorites: 'Paneer Butter Masala, Dal Makhani' },
-  { id: '2', name: 'Priya Sharma', phone: '+91 98765 43211', lastVisit: '1 week ago', lifetimeValue: '₹32,000', favorites: 'Chicken Biryani, Butter Chicken' },
-  { id: '3', name: 'Amit Patel', phone: '+91 98765 43212', lastVisit: '3 days ago', lifetimeValue: '₹28,500', favorites: 'Masala Dosa, Gulab Jamun' },
-  { id: '4', name: 'Sneha Reddy', phone: '+91 98765 43213', lastVisit: 'Today', lifetimeValue: '₹52,000', favorites: 'Vegetable Korma, Paneer Tikka' },
-  { id: '5', name: 'Vikram Singh', phone: '+91 98765 43214', lastVisit: '5 days ago', lifetimeValue: '₹38,200', favorites: 'Chicken Tikka, Biryani' },
-];
+import { useQuery } from "@tanstack/react-query";
+import type { Customer } from "@shared/schema";
+import { formatDistanceToNow } from "date-fns";
 
 export default function Customers() {
   const [searchQuery, setSearchQuery] = useState('');
   const { toast } = useToast();
+
+  const { data: customers = [], isLoading } = useQuery<Customer[]>({
+    queryKey: ['/api/customers'],
+  });
 
   const handleCreateOrder = (customerId: string, name: string) => {
     toast({ 
       description: `Creating order for ${name}` 
     });
   };
+
+  const filteredCustomers = customers.filter(customer =>
+    customer.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    customer.phone.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  if (isLoading) {
+    return <div className="flex items-center justify-center h-full">Loading...</div>;
+  }
 
   return (
     <div className="p-6 h-full overflow-y-auto">
@@ -46,55 +54,64 @@ export default function Customers() {
           />
         </div>
 
-        <div className="bg-card rounded-2xl border overflow-hidden">
-          <table className="w-full">
-            <thead className="bg-muted/50">
-              <tr>
-                <th className="text-left p-4 font-semibold text-sm">Name</th>
-                <th className="text-left p-4 font-semibold text-sm">Phone</th>
-                <th className="text-left p-4 font-semibold text-sm">Last Visit</th>
-                <th className="text-left p-4 font-semibold text-sm">Lifetime Value</th>
-                <th className="text-left p-4 font-semibold text-sm">Favorites</th>
-                <th className="text-left p-4 font-semibold text-sm">Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {mockCustomers.map((customer) => (
-                <tr 
-                  key={customer.id} 
-                  className="border-t hover-elevate"
-                  data-testid={`row-customer-${customer.id}`}
-                >
-                  <td className="p-4">
-                    <p className="font-medium" data-testid={`text-customer-name-${customer.id}`}>{customer.name}</p>
-                  </td>
-                  <td className="p-4">
-                    <p className="text-sm text-muted-foreground tabular-nums">{customer.phone}</p>
-                  </td>
-                  <td className="p-4">
-                    <Badge variant="secondary" className="rounded-md">{customer.lastVisit}</Badge>
-                  </td>
-                  <td className="p-4">
-                    <p className="font-semibold tabular-nums" data-testid={`text-ltv-${customer.id}`}>{customer.lifetimeValue}</p>
-                  </td>
-                  <td className="p-4">
-                    <p className="text-sm text-muted-foreground">{customer.favorites}</p>
-                  </td>
-                  <td className="p-4">
-                    <Button 
-                      size="sm" 
-                      className="rounded-xl"
-                      onClick={() => handleCreateOrder(customer.id, customer.name)}
-                      data-testid={`button-create-order-${customer.id}`}
-                    >
-                      Create Order
-                    </Button>
-                  </td>
+        {filteredCustomers.length === 0 ? (
+          <div className="text-center py-12 text-muted-foreground">
+            No customers found. Add your first customer to get started!
+          </div>
+        ) : (
+          <div className="bg-card rounded-2xl border overflow-hidden">
+            <table className="w-full">
+              <thead className="bg-muted/50">
+                <tr>
+                  <th className="text-left p-4 font-semibold text-sm">Name</th>
+                  <th className="text-left p-4 font-semibold text-sm">Phone</th>
+                  <th className="text-left p-4 font-semibold text-sm">Last Visit</th>
+                  <th className="text-left p-4 font-semibold text-sm">Lifetime Value</th>
+                  <th className="text-left p-4 font-semibold text-sm">Action</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {filteredCustomers.map((customer) => (
+                  <tr 
+                    key={customer.id} 
+                    className="border-t hover-elevate"
+                    data-testid={`row-customer-${customer.id}`}
+                  >
+                    <td className="p-4">
+                      <p className="font-medium" data-testid={`text-customer-name-${customer.id}`}>{customer.name}</p>
+                    </td>
+                    <td className="p-4">
+                      <p className="text-sm text-muted-foreground tabular-nums">{customer.phone}</p>
+                    </td>
+                    <td className="p-4">
+                      <Badge variant="secondary" className="rounded-md">
+                        {customer.lastVisit 
+                          ? formatDistanceToNow(new Date(customer.lastVisit), { addSuffix: true })
+                          : 'Never'
+                        }
+                      </Badge>
+                    </td>
+                    <td className="p-4">
+                      <p className="font-semibold tabular-nums" data-testid={`text-ltv-${customer.id}`}>
+                        ₹{parseFloat(customer.lifetimeValue || '0').toFixed(2)}
+                      </p>
+                    </td>
+                    <td className="p-4">
+                      <Button 
+                        size="sm" 
+                        className="rounded-xl"
+                        onClick={() => handleCreateOrder(customer.id, customer.name)}
+                        data-testid={`button-create-order-${customer.id}`}
+                      >
+                        Create Order
+                      </Button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   );

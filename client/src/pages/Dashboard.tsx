@@ -2,10 +2,14 @@ import { StatCard } from "@/components/StatCard";
 import { Card } from "@/components/ui/card";
 import { ChefHat, DollarSign, ShoppingCart, TrendingUp, Lightbulb } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
+import { useQuery } from "@tanstack/react-query";
 
-import paneerImage from '@assets/generated_images/Paneer_Butter_Masala_dish_80e08089.png';
-import biryaniImage from '@assets/generated_images/Chicken_Biryani_dish_b8f84884.png';
-import dosaImage from '@assets/generated_images/Masala_Dosa_breakfast_ea9368d7.png';
+interface AnalyticsData {
+  dailySales: number;
+  orderCount: number;
+  avgTicket: number;
+  topDishes: Array<{ dishId: string; name: string; image: string | null; orders: number }>;
+}
 
 const salesData = [
   { day: 'Mon', sales: 65000 },
@@ -25,13 +29,17 @@ const categoryData = [
   { name: 'Others', value: 5, color: 'hsl(var(--chart-5))' },
 ];
 
-const topDishes = [
-  { name: 'Paneer Butter Masala', orders: 42, image: paneerImage },
-  { name: 'Chicken Biryani', orders: 38, image: biryaniImage },
-  { name: 'Masala Dosa', orders: 35, image: dosaImage },
-];
-
 export default function Dashboard() {
+  const { data: analytics, isLoading } = useQuery<AnalyticsData>({
+    queryKey: ['/api/analytics'],
+  });
+
+  if (isLoading || !analytics) {
+    return <div className="flex items-center justify-center h-full">Loading...</div>;
+  }
+
+  const { dailySales, orderCount, avgTicket, topDishes } = analytics;
+
   return (
     <div className="p-6 h-full overflow-y-auto">
       <div className="max-w-7xl mx-auto space-y-6">
@@ -50,19 +58,19 @@ export default function Dashboard() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <StatCard
             title="Daily Sales"
-            value="₹85,000"
+            value={`₹${Math.round(dailySales).toLocaleString()}`}
             trend="+12% today"
             icon={DollarSign}
           />
           <StatCard
             title="Orders"
-            value="142"
+            value={orderCount.toString()}
             trend="+8% from yesterday"
             icon={ShoppingCart}
           />
           <StatCard
             title="Avg Ticket Size"
-            value="₹598"
+            value={`₹${Math.round(avgTicket)}`}
             trend="+5% this week"
             icon={TrendingUp}
           />
@@ -76,7 +84,12 @@ export default function Dashboard() {
             <div>
               <h3 className="font-semibold text-lg">AI Insights</h3>
               <p className="text-muted-foreground mt-1">
-                Your sales increased by 12% this week. Best-selling item: <span className="font-semibold text-foreground">Paneer Butter Masala</span>
+                {orderCount > 0 
+                  ? `You have ${orderCount} orders today with total sales of ₹${Math.round(dailySales).toLocaleString()}.`
+                  : 'No orders yet today. Time to start selling!'
+                }
+                {topDishes.length > 0 && ` Best-selling item: `}
+                {topDishes.length > 0 && <span className="font-semibold text-foreground">{topDishes[0].name}</span>}
               </p>
             </div>
           </div>
@@ -145,20 +158,24 @@ export default function Dashboard() {
           </Card>
         </div>
 
-        <Card className="p-6">
-          <h3 className="font-semibold text-lg mb-4">Top Selling Dishes Today</h3>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {topDishes.map((dish, idx) => (
-              <div key={idx} className="flex items-center gap-4 p-4 bg-muted/30 rounded-xl">
-                <img src={dish.image} alt={dish.name} className="w-16 h-16 rounded-xl object-cover" />
-                <div className="flex-1">
-                  <p className="font-medium">{dish.name}</p>
-                  <p className="text-sm text-muted-foreground tabular-nums">{dish.orders} orders</p>
+        {topDishes.length > 0 && (
+          <Card className="p-6">
+            <h3 className="font-semibold text-lg mb-4">Top Selling Dishes Today</h3>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {topDishes.map((dish, idx) => (
+                <div key={idx} className="flex items-center gap-4 p-4 bg-muted/30 rounded-xl">
+                  {dish.image && (
+                    <img src={dish.image} alt={dish.name} className="w-16 h-16 rounded-xl object-cover" />
+                  )}
+                  <div className="flex-1">
+                    <p className="font-medium">{dish.name}</p>
+                    <p className="text-sm text-muted-foreground tabular-nums">{dish.orders} orders</p>
+                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
-        </Card>
+              ))}
+            </div>
+          </Card>
+        )}
       </div>
     </div>
   );
