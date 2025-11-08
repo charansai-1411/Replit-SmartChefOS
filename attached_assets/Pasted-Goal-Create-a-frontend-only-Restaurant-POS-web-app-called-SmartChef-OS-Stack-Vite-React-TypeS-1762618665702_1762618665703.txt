@@ -1,0 +1,155 @@
+Goal: Create a frontend-only Restaurant POS web app called SmartChef OS.
+Stack: Vite + React + TypeScript + TailwindCSS.
+Design: Use the earthy/organic theme (sage green, clay, warm off-white, rounded 16–24px, soft shadows) from the last 3 reference images.
+Features: Implement the Order Line, Manage Dishes, Customers, Dashboard from the first 3 images. No backend—use local mock data.
+
+Tasks:
+
+Scaffold
+
+Init Vite React + TS, add Tailwind.
+
+Configure Tailwind theme tokens:
+
+colors: {
+  brand: { primary: '#6FA59C', accent: '#E29578', ink: '#23302B' },
+  surface: '#F6F4F2', card: '#FFFFFF', success:'#2E7D32', warn:'#C77800', danger:'#C0392B'
+},
+borderRadius: { xl: '24px', lg: '16px' }
+
+
+Global styles: font Inter (UI) + Tabular Numbers for stats, body bg surface, text brand.ink.
+
+File Structure
+
+src/
+  assets/ (dish images placeholders)
+  data/
+    items.json
+    orders.json
+    customers.json
+  components/
+    Sidebar.tsx
+    Topbar.tsx
+    Chips.tsx
+    ItemCard.tsx
+    CartPanel.tsx
+    TotalsCard.tsx
+    PaymentButtons.tsx
+    StatCard.tsx
+    InsightCard.tsx
+    FilterDrawer.tsx
+    Modals/
+      AddDishModal.tsx
+      DiscountModal.tsx
+      ShortcutsModal.tsx
+  pages/
+    OrderLine.tsx
+    ManageDishes.tsx
+    Customers.tsx
+    Dashboard.tsx
+  App.tsx
+  router.tsx
+
+
+Seed Mock Data
+
+items.json (≥20 items): { id, name, price, category, veg: boolean, image }
+
+orders.json (5 samples): { id, table, type:'dine-in'|'takeaway'|'waitlist'|'served', items:[{itemId, qty, notes}], status, createdAt }
+
+customers.json: { id, name, phone, lastVisit, lifetimeValue, favorites:[itemId] }
+
+Layout
+
+Sidebar (sticky): Logo “SmartChef OS”, links: Dashboard, Order Line (default), Manage Tables (disabled), Manage Dishes, Customers, Settings, Help, Logout. Active pill with icon+label.
+
+Topbar: Search input, user chip (avatar + role), quick actions (Print, KOT) as ghost buttons.
+
+Page: Order Line (default)
+
+Status chips row: All / Dine-in / Waitlist / Takeaway / Served (with counts). Use Chips.tsx.
+
+Active order carousel: small cards showing #FOO27, table, type, “In Kitchen / Ready”.
+
+Category strip: pills (All, Specials, Soups, Desserts, Chicken, etc.).
+
+Menu grid: ItemCard with image, title, price, + / – qty, availability dot; grid/list toggle; FilterDrawer (veg, price range, popularity).
+
+Right CartPanel (sticky): table no., guests, line items with qty editor & modifiers; TotalsCard (subtotal, tax, service charge, discount input); PaymentButtons (Cash / Card / Scan); CTAs: Send to Kitchen (primary), Print Bill, Place Order (show toasts only).
+
+Keyboard shortcuts: F1=Search, F2=Add item (focus first add), F3=KOT, Ctrl+P=Print Bill. Include a small ShortcutsModal.
+
+Page: Manage Dishes
+
+Left sub-sidebar: categories with counts; “Add New Category” button (client-side only).
+
+Top controls: search, Add New Dish (opens AddDishModal with fields: name, category, price, photo upload, veg toggle, tax slab, printer route).
+
+Grid of dish cards with availability toggle, edit/delete checkbox; include dashed “Add New Dish” card.
+
+Page: Customers
+
+Table with columns: Name, Phone, Last Visit, LTV, Favorites, action Create Order.
+
+Simple row filter/search.
+
+Page: Dashboard (read-only mock)
+
+Greeting panel: “Hello Charan, ready to thrive today?”
+
+StatCard trio: Daily Sales, Orders, Avg Ticket Size.
+
+InsightCard: “Sales up 12% this week. Best-selling: Paneer Butter Masala.”
+
+Charts: lightweight line + donut (use a tiny lib like recharts or simple SVG placeholders). Keep colors in brand palette.
+
+Interaction & UX Rules
+
+Big, accessible tap targets (≥44px), visible focus states, ARIA labels on CTAs.
+
+Rounded corners (16–24px), soft shadows, calm animations (hover raise, button press).
+
+Toasts: “Item added”, “KOT sent”, “Bill printed”.
+
+Persistent cart with localStorage.
+
+Theme & Tokens (Tailwind classes)
+
+Buttons:
+
+Primary: bg-brand-primary text-white rounded-xl px-5 py-3 shadow-sm hover:opacity-95
+
+Secondary: bg-card text-brand-ink border border-brand-primary/20
+
+Ghost: text-brand-ink/70 hover:bg-card
+
+Cards: bg-card rounded-2xl shadow-md p-4
+
+Pills/Chips: rounded-full px-4 py-2 bg-brand-primary/10 text-brand-ink
+
+What NOT to implement
+
+No backend/auth, no real printing, no hardware integration.
+
+No heavy state libs—use React context or simple hooks.
+
+No complex analytics—static mock text is fine.
+
+Stretch (if time)
+
+Dark mode tokens.
+
+“Manage Tables” placeholder grid.
+
+Owner mobile view (read-only dashboard).
+
+Deliverable: A running Replit project with npm scripts:
+
+dev (Vite)
+
+build
+
+preview
+
+Document in README.md how to run, and list keyboard shortcuts + component map.
