@@ -156,6 +156,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const customers = await storage.getAllCustomers();
       res.json(customers);
     } catch (error) {
+      console.error("Customers error:", error);
       res.status(500).json({ error: "Failed to fetch customers" });
     }
   });
@@ -213,6 +214,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
     } catch (error) {
       console.error("Analytics error:", error);
+      if (error instanceof Error) {
+        console.error("Error message:", error.message);
+        console.error("Error stack:", error.stack);
+      }
       res.status(500).json({ error: "Failed to fetch analytics data" });
     }
   });

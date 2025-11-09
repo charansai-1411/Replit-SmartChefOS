@@ -13,7 +13,7 @@ import {
   customers
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, desc, sql } from "drizzle-orm";
+import { eq, desc, sql, gte } from "drizzle-orm";
 
 export interface IStorage {
   // Dishes
@@ -129,7 +129,7 @@ export class DatabaseStorage implements IStorage {
     const result = await db
       .select({ total: sql<string>`COALESCE(SUM(${orders.total}), 0)` })
       .from(orders)
-      .where(sql`${orders.createdAt} >= ${today}`);
+      .where(gte(orders.createdAt, today));
     
     return parseFloat(result[0]?.total || '0');
   }
@@ -141,7 +141,7 @@ export class DatabaseStorage implements IStorage {
     const result = await db
       .select({ count: sql<string>`COUNT(*)` })
       .from(orders)
-      .where(sql`${orders.createdAt} >= ${today}`);
+      .where(gte(orders.createdAt, today));
     
     return Number(result[0]?.count ?? 0);
   }
@@ -153,7 +153,7 @@ export class DatabaseStorage implements IStorage {
     const result = await db
       .select({ avg: sql<string>`COALESCE(AVG(${orders.total}), 0)` })
       .from(orders)
-      .where(sql`${orders.createdAt} >= ${today} AND ${orders.total} > 0`);
+      .where(gte(orders.createdAt, today));
     
     return parseFloat(result[0]?.avg || '0');
   }
@@ -172,7 +172,7 @@ export class DatabaseStorage implements IStorage {
       .from(orderItems)
       .innerJoin(dishes, eq(orderItems.dishId, dishes.id))
       .innerJoin(orders, eq(orderItems.orderId, orders.id))
-      .where(sql`${orders.createdAt} >= ${today}`)
+      .where(gte(orders.createdAt, today))
       .groupBy(orderItems.dishId, dishes.name, dishes.image)
       .orderBy(sql`COUNT(DISTINCT ${orderItems.orderId}) DESC`)
       .limit(limit);
