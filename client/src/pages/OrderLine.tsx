@@ -1,15 +1,18 @@
 import { useState, useEffect } from "react";
+import { useLocation } from "wouter";
 import { StatusChips } from "@/components/StatusChips";
 import { CategoryFilter } from "@/components/CategoryFilter";
 import { ItemCard } from "@/components/ItemCard";
 import { OrderCard } from "@/components/OrderCard";
 import { CartPanel } from "@/components/CartPanel";
-import { Grid, List, SlidersHorizontal } from "lucide-react";
+import { Grid, List, SlidersHorizontal, ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
 import { useToast } from "@/hooks/use-toast";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import type { Dish, Order } from "@shared/schema";
+import type { Dish, Order, Table } from "@shared/schema";
 import { formatDistanceToNow } from "date-fns";
 
 interface CartItem {
@@ -20,13 +23,35 @@ interface CartItem {
 }
 
 export default function OrderLine() {
+  const [location, setLocation] = useLocation();
   const [activeStatus, setActiveStatus] = useState('all');
   const [activeCategory, setActiveCategory] = useState('All');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [cart, setCart] = useState<CartItem[]>([]);
-  const [tableNumber, setTableNumber] = useState('04');
   const [guests, setGuests] = useState(2);
   const { toast } = useToast();
+
+  // Get table from URL params
+  const urlParams = new URLSearchParams(window.location.search);
+  const tableId = urlParams.get('table');
+  const tableNumberParam = urlParams.get('tableNumber');
+  const orderType = urlParams.get('type') || 'dine-in'; // dine-in, takeaway, or orders
+
+  const { data: table } = useQuery<Table>({
+    queryKey: [`/api/tables/${tableId}`],
+    enabled: !!tableId,
+    queryFn: async () => {
+      if (!tableId) return null;
+      const response = await fetch(`/api/tables/${tableId}`);
+      if (!response.ok) return null;
+      return response.json();
+    },
+  });
+
+  const tableNumber = table?.number || tableNumberParam || '04';
+  
+  // If type is 'orders', show existing orders view, otherwise show order creation
+  const isOrdersView = orderType === 'orders';
 
   const { data: dishes = [], isLoading: dishesLoading } = useQuery<Dish[]>({
     queryKey: ['/api/dishes'],
@@ -112,7 +137,7 @@ export default function OrderLine() {
       order: {
         tableNumber,
         guests,
-        type: 'dine-in',
+        type: orderType === 'takeaway' ? 'takeaway' : 'dine-in',
         status: 'pending',
       },
       items: cart.map(item => ({
@@ -165,22 +190,41 @@ export default function OrderLine() {
     return <div className="flex items-center justify-center h-full">Loading...</div>;
   }
 
-  return (
-    <div className="flex gap-6 p-6 h-full overflow-hidden">
-      <div className="flex-1 overflow-y-auto space-y-6">
-        <div>
-          <h1 className="text-2xl font-bold mb-4">Order Line</h1>
-          <StatusChips 
-            activeStatus={activeStatus} 
-            onStatusChange={setActiveStatus}
-            counts={statusCounts}
-          />
+  // If orders view, show only orders list
+  if (isOrdersView) {
+    const filteredOrders = tableNumber 
+      ? orders.filter(order => order.tableNumber === tableNumber)
+      : orders;
+
+    return (
+      <div className="h-full overflow-hidden p-6">
+        <div className="flex items-center gap-4 mb-6">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setLocation("/")}
+            className="rounded-xl"
+          >
+            <ArrowLeft className="w-4 h-4" />
+          </Button>
+          <div>
+            <h1 className="text-2xl font-bold">Orders</h1>
+            {table ? (
+              <p className="text-sm text-muted-foreground">
+                Table {table.number} - {table.section}
+              </p>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                All Orders
+              </p>
+            )}
+          </div>
         </div>
 
         <div>
           <h2 className="text-sm font-medium text-muted-foreground mb-3">Active Orders</h2>
           <div className="flex gap-4 overflow-x-auto pb-2">
-            {orders.slice(0, 5).map((order) => (
+            {filteredOrders.slice(0, 10).map((order) => (
               <OrderCard 
                 key={order.id}
                 orderNumber={`Order #${order.id.slice(0, 6)}`}
@@ -191,64 +235,129 @@ export default function OrderLine() {
               />
             ))}
           </div>
+          {filteredOrders.length === 0 && (
+            <Card className="p-8 text-center">
+              <p className="text-muted-foreground">
+                {tableNumber ? "No orders found for this table" : "No orders found"}
+              </p>
+            </Card>
+          )}
         </div>
+      </div>
+    );
+  }
 
-        <div>
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-semibold">Foodies Menu</h2>
-            <div className="flex gap-2">
-              <Button 
-                variant={viewMode === 'grid' ? 'default' : 'ghost'} 
-                size="icon"
-                onClick={() => setViewMode('grid')}
-                data-testid="button-view-grid"
-              >
-                <Grid className="w-4 h-4" />
-              </Button>
-              <Button 
-                variant={viewMode === 'list' ? 'default' : 'ghost'} 
-                size="icon"
-                onClick={() => setViewMode('list')}
-                data-testid="button-view-list"
-              >
-                <List className="w-4 h-4" />
-              </Button>
-              <Button variant="ghost" size="icon" data-testid="button-filter">
-                <SlidersHorizontal className="w-4 h-4" />
-              </Button>
+  return (
+    <div className="h-full overflow-hidden p-6">
+      <ResizablePanelGroup direction="horizontal" className="h-full">
+        <ResizablePanel defaultSize={75} minSize={50}>
+          <div className="h-full overflow-y-auto pr-6 space-y-6">
+            <div>
+              <div className="flex items-center gap-4 mb-4">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setLocation("/")}
+                  className="rounded-xl"
+                >
+                  <ArrowLeft className="w-4 h-4" />
+                </Button>
+                <div>
+                  <h1 className="text-2xl font-bold">
+                    {orderType === 'takeaway' ? 'Takeaway Order' : 'Dine-in Order'}
+                  </h1>
+                  {table && (
+                    <p className="text-sm text-muted-foreground">
+                      Table {table.number} - {table.section}
+                    </p>
+                  )}
+                </div>
+              </div>
+              <StatusChips 
+                activeStatus={activeStatus} 
+                onStatusChange={setActiveStatus}
+                counts={statusCounts}
+              />
+            </div>
+
+            <div>
+              <h2 className="text-sm font-medium text-muted-foreground mb-3">Active Orders</h2>
+              <div className="flex gap-4 overflow-x-auto pb-2">
+                {orders.slice(0, 5).map((order) => (
+                  <OrderCard 
+                    key={order.id}
+                    orderNumber={`Order #${order.id.slice(0, 6)}`}
+                    table={order.tableNumber || 'Takeaway'}
+                    itemCount={order.guests || 1}
+                    status={order.status === 'pending' ? 'In Kitchen' : order.status}
+                    time={formatDistanceToNow(new Date(order.createdAt), { addSuffix: true })}
+                  />
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-semibold">Foodies Menu</h2>
+                <div className="flex gap-2">
+                  <Button 
+                    variant={viewMode === 'grid' ? 'default' : 'ghost'} 
+                    size="icon"
+                    onClick={() => setViewMode('grid')}
+                    data-testid="button-view-grid"
+                  >
+                    <Grid className="w-4 h-4" />
+                  </Button>
+                  <Button 
+                    variant={viewMode === 'list' ? 'default' : 'ghost'} 
+                    size="icon"
+                    onClick={() => setViewMode('list')}
+                    data-testid="button-view-list"
+                  >
+                    <List className="w-4 h-4" />
+                  </Button>
+                  <Button variant="ghost" size="icon" data-testid="button-filter">
+                    <SlidersHorizontal className="w-4 h-4" />
+                  </Button>
+                </div>
+              </div>
+              
+              <CategoryFilter 
+                categories={categories}
+                activeCategory={activeCategory}
+                onCategoryChange={setActiveCategory}
+              />
+            </div>
+
+            <div className={`grid ${viewMode === 'grid' ? 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3' : 'grid-cols-1'} gap-4`}>
+              {filteredDishes.map((dish) => (
+                <ItemCard
+                  key={dish.id}
+                  {...dish}
+                  image={dish.image || ''}
+                  price={parseFloat(dish.price)}
+                  onQuantityChange={(id, qty) => handleQuantityChange(id, qty)}
+                />
+              ))}
             </div>
           </div>
-          
-          <CategoryFilter 
-            categories={categories}
-            activeCategory={activeCategory}
-            onCategoryChange={setActiveCategory}
-          />
-        </div>
+        </ResizablePanel>
 
-        <div className={`grid ${viewMode === 'grid' ? 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3' : 'grid-cols-1'} gap-4`}>
-          {filteredDishes.map((dish) => (
-            <ItemCard
-              key={dish.id}
-              {...dish}
-              image={dish.image || ''}
-              price={parseFloat(dish.price)}
-              onQuantityChange={(id, qty) => handleQuantityChange(id, qty)}
+        <ResizableHandle withHandle />
+
+        <ResizablePanel defaultSize={25} minSize={20} maxSize={40}>
+          <div className="h-full overflow-hidden">
+            <CartPanel
+              items={cart}
+              tableNumber={tableNumber}
+              guests={guests}
+              onUpdateQuantity={handleCartUpdate}
+              onRemoveItem={handleRemoveFromCart}
+              onPlaceOrder={handlePlaceOrder}
             />
-          ))}
-        </div>
-      </div>
-
-      <div className="w-full max-w-md">
-        <CartPanel
-          items={cart}
-          tableNumber={tableNumber}
-          guests={guests}
-          onUpdateQuantity={handleCartUpdate}
-          onRemoveItem={handleRemoveFromCart}
-          onPlaceOrder={handlePlaceOrder}
-        />
-      </div>
+          </div>
+        </ResizablePanel>
+      </ResizablePanelGroup>
     </div>
   );
 }

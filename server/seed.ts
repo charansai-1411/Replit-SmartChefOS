@@ -1,6 +1,6 @@
 import "dotenv/config";
 import { db } from "./db";
-import { dishes, customers, orders, orderItems } from "@shared/schema";
+import { dishes, customers, orders, orderItems, tables } from "@shared/schema";
 import { eq } from "drizzle-orm";
 
 const seedDishes = [
@@ -22,6 +22,30 @@ const seedCustomers = [
   { name: 'Vikram Singh', phone: '+91 98765 43214', lastVisit: new Date(), lifetimeValue: '0' },
 ];
 
+const seedTables = [
+  // Garden section
+  { number: '01', section: 'Garden', capacity: 4, status: 'available' },
+  { number: '02', section: 'Garden', capacity: 6, status: 'available' },
+  { number: '03', section: 'Garden', capacity: 2, status: 'occupied' },
+  { number: '04', section: 'Garden', capacity: 4, status: 'available' },
+  // Balcony section
+  { number: '01', section: 'Balcony', capacity: 4, status: 'available' },
+  { number: '02', section: 'Balcony', capacity: 2, status: 'reserved' },
+  { number: '03', section: 'Balcony', capacity: 6, status: 'available' },
+  // Open section
+  { number: '01', section: 'Open', capacity: 4, status: 'available' },
+  { number: '02', section: 'Open', capacity: 8, status: 'available' },
+  { number: '03', section: 'Open', capacity: 4, status: 'cleaning' },
+  { number: '04', section: 'Open', capacity: 2, status: 'available' },
+  // Indoor section
+  { number: '01', section: 'Indoor', capacity: 4, status: 'available' },
+  { number: '02', section: 'Indoor', capacity: 6, status: 'occupied' },
+  { number: '03', section: 'Indoor', capacity: 4, status: 'available' },
+  // VIP section
+  { number: '01', section: 'VIP', capacity: 8, status: 'available' },
+  { number: '02', section: 'VIP', capacity: 10, status: 'reserved' },
+];
+
 async function seed() {
   console.log("Seeding database...");
   
@@ -41,6 +65,11 @@ async function seed() {
     // Get all customers
     const allCustomers = await db.select().from(customers);
     console.log(`✓ Found ${allCustomers.length} customers in database`);
+
+    // Insert tables
+    const insertedTables = await db.insert(tables).values(seedTables).onConflictDoNothing().returning();
+    console.log("✓ Tables seeded successfully");
+    console.log(`✓ Found ${insertedTables.length} tables in database`);
 
     // Create orders for today (so they show up in analytics)
     const today = new Date();

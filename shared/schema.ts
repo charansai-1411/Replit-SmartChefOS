@@ -41,12 +41,23 @@ export const customers = pgTable("customers", {
   lifetimeValue: decimal("lifetime_value", { precision: 10, scale: 2 }).default("0"),
 });
 
+export const tables = pgTable("tables", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  number: text("number").notNull(),
+  section: text("section").notNull(),
+  capacity: integer("capacity").notNull().default(4),
+  status: text("status").notNull().default("available"), // available, occupied, reserved, cleaning
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
 export const insertDishSchema = createInsertSchema(dishes).omit({ id: true });
 export const updateDishSchema = insertDishSchema.partial();
 export const insertOrderSchema = createInsertSchema(orders).omit({ id: true, createdAt: true });
 export const insertOrderItemSchema = createInsertSchema(orderItems).omit({ id: true });
 export const insertCustomerSchema = createInsertSchema(customers).omit({ id: true });
 export const updateCustomerSchema = insertCustomerSchema.partial();
+export const insertTableSchema = createInsertSchema(tables).omit({ id: true, createdAt: true });
+export const updateTableSchema = insertTableSchema.partial();
 
 export type Dish = typeof dishes.$inferSelect;
 export type InsertDish = z.infer<typeof insertDishSchema>;
@@ -56,3 +67,5 @@ export type OrderItem = typeof orderItems.$inferSelect;
 export type InsertOrderItem = z.infer<typeof insertOrderItemSchema>;
 export type Customer = typeof customers.$inferSelect;
 export type InsertCustomer = z.infer<typeof insertCustomerSchema>;
+export type Table = typeof tables.$inferSelect;
+export type InsertTable = z.infer<typeof insertTableSchema>;

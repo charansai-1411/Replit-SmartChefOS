@@ -7,13 +7,16 @@ import {
   type InsertOrderItem,
   type Customer,
   type InsertCustomer,
+  type Table,
+  type InsertTable,
   dishes,
   orders,
   orderItems,
-  customers
+  customers,
+  tables
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, desc, sql, gte } from "drizzle-orm";
+import { eq, desc, asc, sql, gte } from "drizzle-orm";
 
 export interface IStorage {
   // Dishes
@@ -38,6 +41,13 @@ export interface IStorage {
   getCustomer(id: string): Promise<Customer | undefined>;
   createCustomer(customer: InsertCustomer): Promise<Customer>;
   updateCustomer(id: string, customer: Partial<InsertCustomer>): Promise<Customer | undefined>;
+  
+  // Tables
+  getAllTables(): Promise<Table[]>;
+  getTable(id: string): Promise<Table | undefined>;
+  createTable(table: InsertTable): Promise<Table>;
+  updateTable(id: string, table: Partial<InsertTable>): Promise<Table | undefined>;
+  deleteTable(id: string): Promise<void>;
   
   // Analytics
   getDailySales(): Promise<number>;
@@ -119,6 +129,30 @@ export class DatabaseStorage implements IStorage {
   async updateCustomer(id: string, customer: Partial<InsertCustomer>): Promise<Customer | undefined> {
     const result = await db.update(customers).set(customer).where(eq(customers.id, id)).returning();
     return result[0];
+  }
+
+  // Tables
+  async getAllTables(): Promise<Table[]> {
+    return await db.select().from(tables).orderBy(asc(tables.section), asc(tables.number));
+  }
+
+  async getTable(id: string): Promise<Table | undefined> {
+    const result = await db.select().from(tables).where(eq(tables.id, id));
+    return result[0];
+  }
+
+  async createTable(table: InsertTable): Promise<Table> {
+    const result = await db.insert(tables).values(table).returning();
+    return result[0];
+  }
+
+  async updateTable(id: string, table: Partial<InsertTable>): Promise<Table | undefined> {
+    const result = await db.update(tables).set(table).where(eq(tables.id, id)).returning();
+    return result[0];
+  }
+
+  async deleteTable(id: string): Promise<void> {
+    await db.delete(tables).where(eq(tables.id, id));
   }
 
   // Analytics

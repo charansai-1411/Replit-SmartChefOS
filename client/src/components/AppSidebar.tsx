@@ -13,9 +13,8 @@ import {
 } from "@/components/ui/sidebar";
 
 const menuItems = [
-  { title: "Dashboard", url: "/", icon: LayoutDashboard },
-  { title: "Order Line", url: "/orders", icon: ShoppingCart },
-  { title: "Manage Tables", url: "/tables", icon: Table, disabled: true },
+  { title: "Tables", url: "/", icon: Table },
+  { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
   { title: "Manage Dishes", url: "/dishes", icon: UtensilsCrossed },
   { title: "Customers", url: "/customers", icon: Users },
 ];

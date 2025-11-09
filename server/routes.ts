@@ -7,7 +7,9 @@ import {
   insertOrderSchema, 
   insertOrderItemSchema, 
   insertCustomerSchema,
-  updateCustomerSchema 
+  updateCustomerSchema,
+  insertTableSchema,
+  updateTableSchema
 } from "@shared/schema";
 
 export async function registerRoutes(app: Express): Promise<Server> {
@@ -193,6 +195,61 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(customer);
     } catch (error) {
       res.status(400).json({ error: "Invalid customer data" });
+    }
+  });
+
+  // Tables API
+  app.get("/api/tables", async (req, res) => {
+    try {
+      const tables = await storage.getAllTables();
+      res.json(tables);
+    } catch (error) {
+      console.error("Tables error:", error);
+      res.status(500).json({ error: "Failed to fetch tables" });
+    }
+  });
+
+  app.get("/api/tables/:id", async (req, res) => {
+    try {
+      const table = await storage.getTable(req.params.id);
+      if (!table) {
+        return res.status(404).json({ error: "Table not found" });
+      }
+      res.json(table);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch table" });
+    }
+  });
+
+  app.post("/api/tables", async (req, res) => {
+    try {
+      const validatedData = insertTableSchema.parse(req.body);
+      const table = await storage.createTable(validatedData);
+      res.status(201).json(table);
+    } catch (error) {
+      res.status(400).json({ error: "Invalid table data" });
+    }
+  });
+
+  app.patch("/api/tables/:id", async (req, res) => {
+    try {
+      const validatedData = updateTableSchema.parse(req.body);
+      const table = await storage.updateTable(req.params.id, validatedData);
+      if (!table) {
+        return res.status(404).json({ error: "Table not found" });
+      }
+      res.json(table);
+    } catch (error) {
+      res.status(400).json({ error: "Invalid table data" });
+    }
+  });
+
+  app.delete("/api/tables/:id", async (req, res) => {
+    try {
+      await storage.deleteTable(req.params.id);
+      res.status(204).send();
+    } catch (error) {
+      res.status(500).json({ error: "Failed to delete table" });
     }
   });
 
