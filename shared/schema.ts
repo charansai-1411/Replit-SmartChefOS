@@ -20,6 +20,7 @@ export const orders = pgTable("orders", {
   guests: integer("guests").default(1),
   type: text("type").notNull(),
   status: text("status").notNull(),
+  kitchenStatus: text("kitchen_status").default("pending"), // pending, sent, preparing, ready
   total: decimal("total", { precision: 10, scale: 2 }).default("0"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
@@ -41,12 +42,45 @@ export const customers = pgTable("customers", {
   lifetimeValue: decimal("lifetime_value", { precision: 10, scale: 2 }).default("0"),
 });
 
+export const tables = pgTable("tables", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  number: text("number").notNull(),
+  section: text("section").notNull(),
+  capacity: integer("capacity").notNull().default(4),
+  status: text("status").notNull().default("available"), // available, occupied, reserved, cleaning
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const ingredients = pgTable("ingredients", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  unit: text("unit").notNull(), // kg, g, l, ml, pieces, etc.
+  currentStock: decimal("current_stock", { precision: 10, scale: 2 }).notNull().default("0"),
+  minLevel: decimal("min_level", { precision: 10, scale: 2 }).notNull().default("0"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const dishIngredients = pgTable("dish_ingredients", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  dishId: varchar("dish_id").notNull().references(() => dishes.id, { onDelete: 'cascade' }),
+  ingredientId: varchar("ingredient_id").notNull().references(() => ingredients.id, { onDelete: 'cascade' }),
+  quantity: decimal("quantity", { precision: 10, scale: 2 }).notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
 export const insertDishSchema = createInsertSchema(dishes).omit({ id: true });
 export const updateDishSchema = insertDishSchema.partial();
 export const insertOrderSchema = createInsertSchema(orders).omit({ id: true, createdAt: true });
 export const insertOrderItemSchema = createInsertSchema(orderItems).omit({ id: true });
 export const insertCustomerSchema = createInsertSchema(customers).omit({ id: true });
 export const updateCustomerSchema = insertCustomerSchema.partial();
+export const insertTableSchema = createInsertSchema(tables).omit({ id: true, createdAt: true });
+export const updateTableSchema = insertTableSchema.partial();
+export const insertIngredientSchema = createInsertSchema(ingredients).omit({ id: true, createdAt: true, updatedAt: true });
+export const updateIngredientSchema = insertIngredientSchema.partial();
+export const insertDishIngredientSchema = createInsertSchema(dishIngredients).omit({ id: true, createdAt: true });
+export const updateDishIngredientSchema = insertDishIngredientSchema.partial();
 
 export type Dish = typeof dishes.$inferSelect;
 export type InsertDish = z.infer<typeof insertDishSchema>;
@@ -56,3 +90,9 @@ export type OrderItem = typeof orderItems.$inferSelect;
 export type InsertOrderItem = z.infer<typeof insertOrderItemSchema>;
 export type Customer = typeof customers.$inferSelect;
 export type InsertCustomer = z.infer<typeof insertCustomerSchema>;
+export type Table = typeof tables.$inferSelect;
+export type InsertTable = z.infer<typeof insertTableSchema>;
+export type Ingredient = typeof ingredients.$inferSelect;
+export type InsertIngredient = z.infer<typeof insertIngredientSchema>;
+export type DishIngredient = typeof dishIngredients.$inferSelect;
+export type InsertDishIngredient = z.infer<typeof insertDishIngredientSchema>;

@@ -11,14 +11,21 @@ import Dashboard from "@/pages/Dashboard";
 import OrderLine from "@/pages/OrderLine";
 import ManageDishes from "@/pages/ManageDishes";
 import Customers from "@/pages/Customers";
+import Tables from "@/pages/Tables";
+import OnlineOrders from "@/pages/OnlineOrders";
+import Inventory from "@/pages/Inventory";
 import NotFound from "@/pages/not-found";
 
 function Router() {
   return (
     <Switch>
-      <Route path="/" component={Dashboard} />
+      <Route path="/" component={Tables} />
+      <Route path="/dashboard" component={Dashboard} />
       <Route path="/orders" component={OrderLine} />
+      <Route path="/online" component={OnlineOrders} />
+      <Route path="/tables" component={Tables} />
       <Route path="/dishes" component={ManageDishes} />
+      <Route path="/inventory" component={Inventory} />
       <Route path="/customers" component={Customers} />
       <Route component={NotFound} />
     </Switch>

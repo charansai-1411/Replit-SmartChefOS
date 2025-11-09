@@ -3,20 +3,55 @@ import { DishManagementCard } from "@/components/DishManagementCard";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
-import { Plus, Search } from "lucide-react";
-import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Plus, Search, Trash2 } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import type { Dish } from "@shared/schema";
+import type { Dish, Ingredient } from "@shared/schema";
+
+interface DishIngredient {
+  id: string;
+  dishId: string;
+  ingredientId: string;
+  quantity: string;
+  ingredient: Ingredient;
+}
 
 export default function ManageDishes() {
   const [selectedCategory, setSelectedCategory] = useState('All Dishes');
   const [searchQuery, setSearchQuery] = useState('');
+  const [editingDishId, setEditingDishId] = useState<string | null>(null);
+  const [newIngredientId, setNewIngredientId] = useState('');
+  const [newIngredientQuantity, setNewIngredientQuantity] = useState('');
   const { toast } = useToast();
 
   const { data: dishes = [], isLoading } = useQuery<Dish[]>({
     queryKey: ['/api/dishes'],
+  });
+
+  const { data: ingredients = [] } = useQuery<Ingredient[]>({
+    queryKey: ['/api/ingredients'],
+  });
+
+  const { data: dishIngredients = [] } = useQuery<DishIngredient[]>({
+    queryKey: editingDishId ? [`/api/dishes/${editingDishId}/ingredients`] : [''],
+    enabled: !!editingDishId,
   });
 
   const updateDishMutation = useMutation({
@@ -45,8 +80,53 @@ export default function ManageDishes() {
     });
   };
 
+  const addIngredientMutation = useMutation({
+    mutationFn: async ({ dishId, ingredientId, quantity }: { dishId: string; ingredientId: string; quantity: string }) => {
+      return await apiRequest('POST', `/api/dishes/${dishId}/ingredients`, {
+        ingredientId,
+        quantity: parseFloat(quantity),
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/dishes/${editingDishId}/ingredients`] });
+      setNewIngredientId('');
+      setNewIngredientQuantity('');
+      toast({ description: "Ingredient added to dish" });
+    },
+  });
+
+  const removeIngredientMutation = useMutation({
+    mutationFn: async (id: string) => {
+      return await apiRequest('DELETE', `/api/dish-ingredients/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/dishes/${editingDishId}/ingredients`] });
+      toast({ description: "Ingredient removed from dish" });
+    },
+  });
+
   const handleEdit = (id: string) => {
-    toast({ description: `Edit dish ${id}` });
+    setEditingDishId(id);
+    setNewIngredientId('');
+    setNewIngredientQuantity('');
+  };
+
+  const handleAddIngredient = () => {
+    if (!editingDishId || !newIngredientId || !newIngredientQuantity) {
+      toast({ description: "Please select an ingredient and enter quantity", variant: "destructive" });
+      return;
+    }
+    addIngredientMutation.mutate({
+      dishId: editingDishId,
+      ingredientId: newIngredientId,
+      quantity: newIngredientQuantity,
+    });
+  };
+
+  const handleRemoveIngredient = (id: string) => {
+    if (confirm("Remove this ingredient from the dish?")) {
+      removeIngredientMutation.mutate(id);
+    }
   };
 
   const handleDelete = (id: string) => {
@@ -155,6 +235,88 @@ export default function ManageDishes() {
           </div>
         </div>
       </div>
+
+      <Dialog open={!!editingDishId} onOpenChange={(open) => !open && setEditingDishId(null)}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>
+              Edit Ingredients - {dishes.find(d => d.id === editingDishId)?.name}
+            </DialogTitle>
+            <DialogDescription>
+              Add or remove ingredients for this dish. When an order is placed, these ingredients will be deducted from inventory.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <h3 className="font-semibold">Current Ingredients</h3>
+              {dishIngredients.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No ingredients added yet</p>
+              ) : (
+                <div className="space-y-2">
+                  {dishIngredients.map((di) => (
+                    <Card key={di.id} className="p-3">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="font-medium">{di.ingredient.name}</p>
+                          <p className="text-sm text-muted-foreground">
+                            {parseFloat(di.quantity).toFixed(2)} {di.ingredient.unit}
+                          </p>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleRemoveIngredient(di.id)}
+                        >
+                          <Trash2 className="w-4 h-4 text-destructive" />
+                        </Button>
+                      </div>
+                    </Card>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="space-y-2 pt-4 border-t">
+              <h3 className="font-semibold">Add New Ingredient</h3>
+              <div className="flex gap-2">
+                <Select value={newIngredientId} onValueChange={setNewIngredientId}>
+                  <SelectTrigger className="flex-1">
+                    <SelectValue placeholder="Select ingredient" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {ingredients
+                      .filter(ing => !dishIngredients.find(di => di.ingredientId === ing.id))
+                      .map((ingredient) => (
+                        <SelectItem key={ingredient.id} value={ingredient.id}>
+                          {ingredient.name} ({ingredient.unit})
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+                <Input
+                  type="number"
+                  step="0.01"
+                  placeholder="Quantity"
+                  value={newIngredientQuantity}
+                  onChange={(e) => setNewIngredientQuantity(e.target.value)}
+                  className="w-32"
+                />
+                <Button
+                  onClick={handleAddIngredient}
+                  disabled={!newIngredientId || !newIngredientQuantity || addIngredientMutation.isPending}
+                >
+                  <Plus className="w-4 h-4 mr-2" />
+                  Add
+                </Button>
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditingDishId(null)}>
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

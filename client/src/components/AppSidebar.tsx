@@ -1,4 +1,4 @@
-import { ChefHat, LayoutDashboard, ShoppingCart, UtensilsCrossed, Users, Settings, HelpCircle, LogOut, Table } from "lucide-react";
+import { ChefHat, LayoutDashboard, ShoppingCart, UtensilsCrossed, Users, Settings, HelpCircle, LogOut, Table, Package, Globe } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import {
   Sidebar,
@@ -13,10 +13,11 @@ import {
 } from "@/components/ui/sidebar";
 
 const menuItems = [
-  { title: "Dashboard", url: "/", icon: LayoutDashboard },
-  { title: "Order Line", url: "/orders", icon: ShoppingCart },
-  { title: "Manage Tables", url: "/tables", icon: Table, disabled: true },
+  { title: "Tables", url: "/", icon: Table },
+  { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
+  { title: "Online Orders", url: "/online", icon: Globe },
   { title: "Manage Dishes", url: "/dishes", icon: UtensilsCrossed },
+  { title: "Inventory", url: "/inventory", icon: Package },
   { title: "Customers", url: "/customers", icon: Users },
 ];
 
@@ -54,9 +55,9 @@ export function AppSidebar() {
                     disabled={item.disabled}
                     data-testid={`link-${item.title.toLowerCase().replace(/\s+/g, '-')}`}
                   >
-                    <Link href={item.url}>
-                      <item.icon className="w-5 h-5" />
-                      <span>{item.title}</span>
+                    <Link href={item.url} className="transition-all duration-200 hover:scale-105">
+                      <item.icon className="w-6 h-6" />
+                      <span className="text-base font-medium">{item.title}</span>
                     </Link>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
@@ -73,7 +74,7 @@ export function AppSidebar() {
               <SidebarMenuButton asChild data-testid={`link-${item.title.toLowerCase().replace(/\s+/g, '-')}`}>
                 <Link href={item.url}>
                   <item.icon className="w-5 h-5" />
-                  <span>{item.title}</span>
+                  <span className="text-sm">{item.title}</span>
                 </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>

@@ -34,7 +34,7 @@ export function Topbar() {
             <AvatarFallback className="bg-primary text-primary-foreground">IK</AvatarFallback>
           </Avatar>
           <div className="text-sm">
-            <p className="font-medium">Ibrahim Kadri</p>
+            <p className="font-medium">charan sai J</p>
             <p className="text-xs text-muted-foreground">Admin</p>
           </div>
         </div>
