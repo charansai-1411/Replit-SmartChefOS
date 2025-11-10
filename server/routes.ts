@@ -1,6 +1,7 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
+import { createStorageContext } from "./storage-context";
 import { 
   insertDishSchema, 
   updateDishSchema,
@@ -105,7 +106,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Dishes API (Protected)
   app.get("/api/dishes", requireAuth, async (req, res) => {
     try {
-      const dishes = await storage.getAllDishes();
+      const ctx = createStorageContext(req.session.ownerId!);
+      const dishes = await ctx.getAllDishes();
       res.json(dishes);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch dishes" });
@@ -114,7 +116,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/dishes/:id", requireAuth, async (req, res) => {
     try {
-      const dish = await storage.getDish(req.params.id);
+      const ctx = createStorageContext(req.session.ownerId!);
+      const dish = await ctx.getDish(req.params.id);
       if (!dish) {
         return res.status(404).json({ error: "Dish not found" });
       }
@@ -126,8 +129,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/dishes", requireAuth, async (req, res) => {
     try {
+      const ctx = createStorageContext(req.session.ownerId!);
       const validatedData = insertDishSchema.parse(req.body);
-      const dish = await storage.createDish(validatedData);
+      const dish = await ctx.createDish(validatedData);
       res.status(201).json(dish);
     } catch (error) {
       res.status(400).json({ error: "Invalid dish data" });
@@ -136,8 +140,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.patch("/api/dishes/:id", requireAuth, async (req, res) => {
     try {
+      const ctx = createStorageContext(req.session.ownerId!);
       const validatedData = updateDishSchema.parse(req.body);
-      const dish = await storage.updateDish(req.params.id, validatedData);
+      const dish = await ctx.updateDish(req.params.id, validatedData);
       if (!dish) {
         return res.status(404).json({ error: "Dish not found" });
       }
@@ -149,7 +154,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.delete("/api/dishes/:id", requireAuth, async (req, res) => {
     try {
-      await storage.deleteDish(req.params.id);
+      const ctx = createStorageContext(req.session.ownerId!);
+      await ctx.deleteDish(req.params.id);
       res.status(204).send();
     } catch (error) {
       res.status(500).json({ error: "Failed to delete dish" });
@@ -159,7 +165,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Orders API (Protected)
   app.get("/api/orders", requireAuth, async (req, res) => {
     try {
-      const orders = await storage.getAllOrders();
+      const ctx = createStorageContext(req.session.ownerId!);
+      const orders = await ctx.getAllOrders();
       res.json(orders);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch orders" });
@@ -168,7 +175,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/orders/active", requireAuth, async (req, res) => {
     try {
-      const orders = await storage.getActiveOrders();
+      const ctx = createStorageContext(req.session.ownerId!);
+      const orders = await ctx.getActiveOrders();
       res.json(orders);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch active orders" });
@@ -177,7 +185,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/orders/:id", requireAuth, async (req, res) => {
     try {
-      const order = await storage.getOrder(req.params.id);
+      const ctx = createStorageContext(req.session.ownerId!);
+      const order = await ctx.getOrder(req.params.id);
       if (!order) {
         return res.status(404).json({ error: "Order not found" });
       }
@@ -189,20 +198,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/orders", requireAuth, async (req, res) => {
     try {
+      const ctx = createStorageContext(req.session.ownerId!);
       const { order: orderData, items } = req.body;
       const validatedOrder = insertOrderSchema.parse(orderData);
       
       let orderTotal = 0;
       if (items && Array.isArray(items)) {
         for (const item of items) {
-          const dish = await storage.getDish(item.dishId);
+          const dish: any = await ctx.getDish(item.dishId);
           if (dish) {
             orderTotal += parseFloat(dish.price) * item.quantity;
           }
         }
       }
       
-      const order = await storage.createOrder({ 
+      const order = await ctx.createOrder({ 
         ...validatedOrder, 
         total: orderTotal.toString(),
         kitchenStatus: 'pending',
@@ -210,20 +220,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       if (items && Array.isArray(items)) {
         for (const item of items) {
-          const dish = await storage.getDish(item.dishId);
+          const dish: any = await ctx.getDish(item.dishId);
           if (dish) {
             const validatedItem = insertOrderItemSchema.parse({
               ...item,
               orderId: order.id,
               price: dish.price,
             });
-            await storage.createOrderItem(validatedItem);
+            await ctx.createOrderItem(validatedItem);
             
             // Deduct ingredients from inventory
-            const dishIngredients = await storage.getDishIngredients(item.dishId);
+            const dishIngredients: any = await ctx.getDishIngredients(item.dishId);
             for (const dishIngredient of dishIngredients) {
               const quantityToDeduct = parseFloat(dishIngredient.quantity) * item.quantity;
-              await storage.updateIngredientStock(
+              await ctx.updateIngredientStock(
                 dishIngredient.ingredientId,
                 -quantityToDeduct
               );
@@ -241,11 +251,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.patch("/api/orders/:id/status", requireAuth, async (req, res) => {
     try {
+      const ctx = createStorageContext(req.session.ownerId!);
       const { status } = req.body;
       if (!status) {
         return res.status(400).json({ error: "Status is required" });
       }
-      const order = await storage.updateOrderStatus(req.params.id, status);
+      const order = await ctx.updateOrderStatus(req.params.id, status);
       if (!order) {
         return res.status(404).json({ error: "Order not found" });
       }
@@ -257,11 +268,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.patch("/api/orders/:id/kitchen-status", requireAuth, async (req, res) => {
     try {
+      const ctx = createStorageContext(req.session.ownerId!);
       const { kitchenStatus } = req.body;
       if (!kitchenStatus) {
         return res.status(400).json({ error: "Kitchen status is required" });
       }
-      const order = await storage.updateOrderKitchenStatus(req.params.id, kitchenStatus);
+      const order = await ctx.updateOrderKitchenStatus(req.params.id, kitchenStatus);
       if (!order) {
         return res.status(404).json({ error: "Order not found" });
       }
@@ -273,7 +285,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/kot", requireAuth, async (req, res) => {
     try {
-      const kotOrders = await storage.getKOTOrders();
+      const ctx = createStorageContext(req.session.ownerId!);
+      const kotOrders = await ctx.getKOTOrders();
       res.json(kotOrders);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch KOT orders" });
@@ -282,7 +295,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/orders/:id/items", requireAuth, async (req, res) => {
     try {
-      const items = await storage.getOrderItems(req.params.id);
+      const ctx = createStorageContext(req.session.ownerId!);
+      const items = await ctx.getOrderItems(req.params.id);
       res.json(items);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch order items" });
@@ -292,7 +306,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Customers API (Protected)
   app.get("/api/customers", requireAuth, async (req, res) => {
     try {
-      const customers = await storage.getAllCustomers();
+      const ctx = createStorageContext(req.session.ownerId!);
+      const customers = await ctx.getAllCustomers();
       res.json(customers);
     } catch (error) {
       console.error("Customers error:", error);
@@ -302,7 +317,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/customers/:id", requireAuth, async (req, res) => {
     try {
-      const customer = await storage.getCustomer(req.params.id);
+      const ctx = createStorageContext(req.session.ownerId!);
+      const customer = await ctx.getCustomer(req.params.id);
       if (!customer) {
         return res.status(404).json({ error: "Customer not found" });
       }
@@ -314,8 +330,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/customers", requireAuth, async (req, res) => {
     try {
+      const ctx = createStorageContext(req.session.ownerId!);
       const validatedData = insertCustomerSchema.parse(req.body);
-      const customer = await storage.createCustomer(validatedData);
+      const customer = await ctx.createCustomer(validatedData);
       res.status(201).json(customer);
     } catch (error) {
       res.status(400).json({ error: "Invalid customer data" });
@@ -324,8 +341,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.patch("/api/customers/:id", requireAuth, async (req, res) => {
     try {
+      const ctx = createStorageContext(req.session.ownerId!);
       const validatedData = updateCustomerSchema.parse(req.body);
-      const customer = await storage.updateCustomer(req.params.id, validatedData);
+      const customer = await ctx.updateCustomer(req.params.id, validatedData);
       if (!customer) {
         return res.status(404).json({ error: "Customer not found" });
       }
@@ -338,7 +356,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Tables API (Protected)
   app.get("/api/tables", requireAuth, async (req, res) => {
     try {
-      const tables = await storage.getAllTables();
+      const ctx = createStorageContext(req.session.ownerId!);
+      const tables = await ctx.getAllTables();
       res.json(tables);
     } catch (error) {
       console.error("Tables error:", error);
@@ -348,7 +367,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/tables/:id", requireAuth, async (req, res) => {
     try {
-      const table = await storage.getTable(req.params.id);
+      const ctx = createStorageContext(req.session.ownerId!);
+      const table = await ctx.getTable(req.params.id);
       if (!table) {
         return res.status(404).json({ error: "Table not found" });
       }
@@ -360,8 +380,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/tables", requireAuth, async (req, res) => {
     try {
+      const ctx = createStorageContext(req.session.ownerId!);
       const validatedData = insertTableSchema.parse(req.body);
-      const table = await storage.createTable(validatedData);
+      const table = await ctx.createTable(validatedData);
       res.status(201).json(table);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Invalid table data";
@@ -371,8 +392,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.patch("/api/tables/:id", requireAuth, async (req, res) => {
     try {
+      const ctx = createStorageContext(req.session.ownerId!);
       const validatedData = updateTableSchema.parse(req.body);
-      const table = await storage.updateTable(req.params.id, validatedData);
+      const table = await ctx.updateTable(req.params.id, validatedData);
       if (!table) {
         return res.status(404).json({ error: "Table not found" });
       }
@@ -385,7 +407,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.delete("/api/tables/:id", requireAuth, async (req, res) => {
     try {
-      await storage.deleteTable(req.params.id);
+      const ctx = createStorageContext(req.session.ownerId!);
+      await ctx.deleteTable(req.params.id);
       res.status(204).send();
     } catch (error) {
       res.status(500).json({ error: "Failed to delete table" });
@@ -395,7 +418,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Ingredients API (Protected)
   app.get("/api/ingredients", requireAuth, async (req, res) => {
     try {
-      const ingredients = await storage.getAllIngredients();
+      const ctx = createStorageContext(req.session.ownerId!);
+      const ingredients = await ctx.getAllIngredients();
       res.json(ingredients);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch ingredients" });
@@ -404,7 +428,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/ingredients/low-stock", requireAuth, async (req, res) => {
     try {
-      const ingredients = await storage.getLowStockIngredients();
+      const ctx = createStorageContext(req.session.ownerId!);
+      const ingredients = await ctx.getLowStockIngredients();
       res.json(ingredients);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch low stock ingredients" });
@@ -413,7 +438,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/ingredients/:id", requireAuth, async (req, res) => {
     try {
-      const ingredient = await storage.getIngredient(req.params.id);
+      const ctx = createStorageContext(req.session.ownerId!);
+      const ingredient = await ctx.getIngredient(req.params.id);
       if (!ingredient) {
         return res.status(404).json({ error: "Ingredient not found" });
       }
@@ -425,8 +451,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/ingredients", requireAuth, async (req, res) => {
     try {
+      const ctx = createStorageContext(req.session.ownerId!);
       const validatedData = insertIngredientSchema.parse(req.body);
-      const ingredient = await storage.createIngredient(validatedData);
+      const ingredient = await ctx.createIngredient(validatedData);
       res.status(201).json(ingredient);
     } catch (error) {
       res.status(400).json({ error: "Invalid ingredient data" });
@@ -435,8 +462,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.patch("/api/ingredients/:id", requireAuth, async (req, res) => {
     try {
+      const ctx = createStorageContext(req.session.ownerId!);
       const validatedData = updateIngredientSchema.parse(req.body);
-      const ingredient = await storage.updateIngredient(req.params.id, validatedData);
+      const ingredient = await ctx.updateIngredient(req.params.id, validatedData);
       if (!ingredient) {
         return res.status(404).json({ error: "Ingredient not found" });
       }
@@ -448,7 +476,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.delete("/api/ingredients/:id", requireAuth, async (req, res) => {
     try {
-      await storage.deleteIngredient(req.params.id);
+      const ctx = createStorageContext(req.session.ownerId!);
+      await ctx.deleteIngredient(req.params.id);
       res.status(204).send();
     } catch (error) {
       res.status(500).json({ error: "Failed to delete ingredient" });
@@ -458,7 +487,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Dish Ingredients API (Protected)
   app.get("/api/dishes/:id/ingredients", requireAuth, async (req, res) => {
     try {
-      const dishIngredients = await storage.getDishIngredients(req.params.id);
+      const ctx = createStorageContext(req.session.ownerId!);
+      const dishIngredients = await ctx.getDishIngredients(req.params.id);
       res.json(dishIngredients);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch dish ingredients" });
@@ -467,11 +497,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/dishes/:id/ingredients", requireAuth, async (req, res) => {
     try {
+      const ctx = createStorageContext(req.session.ownerId!);
       const validatedData = insertDishIngredientSchema.parse({
         ...req.body,
         dishId: req.params.id,
       });
-      const dishIngredient = await storage.addDishIngredient(validatedData);
+      const dishIngredient = await ctx.addDishIngredient(validatedData);
       res.status(201).json(dishIngredient);
     } catch (error) {
       res.status(400).json({ error: "Invalid dish ingredient data" });
@@ -480,7 +511,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.delete("/api/dish-ingredients/:id", requireAuth, async (req, res) => {
     try {
-      await storage.removeDishIngredient(req.params.id);
+      const ctx = createStorageContext(req.session.ownerId!);
+      await ctx.removeDishIngredient(req.params.id);
       res.status(204).send();
     } catch (error) {
       res.status(500).json({ error: "Failed to remove dish ingredient" });
@@ -490,11 +522,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Analytics API (Protected)
   app.get("/api/analytics", requireAuth, async (req, res) => {
     try {
+      const ctx = createStorageContext(req.session.ownerId!);
       const [dailySales, orderCount, avgTicket, topDishes] = await Promise.all([
-        storage.getDailySales(),
-        storage.getOrderCount(),
-        storage.getAverageTicket(),
-        storage.getTopDishes(3),
+        ctx.getDailySales(),
+        ctx.getOrderCount(),
+        ctx.getAverageTicket(),
+        ctx.getTopDishes(3),
       ]);
       
       res.json({

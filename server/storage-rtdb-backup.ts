@@ -18,10 +18,15 @@ import {
   type LoginCredentials,
   COLLECTIONS
 } from "@shared/schema";
-import { initializeFirebase, Timestamp } from "./firebase";
+import { initializeFirebase } from "./firebase";
 import * as crypto from "crypto";
 
 const db = initializeFirebase();
+
+// Helper function to generate unique IDs
+function generateId(): string {
+  return Date.now().toString(36) + Math.random().toString(36).substr(2);
+}
 
 // Helper function to hash passwords
 function hashPassword(password: string): string {
@@ -101,68 +106,64 @@ export interface IStorage {
 export class DatabaseStorage implements IStorage {
   // Dishes
   async getAllDishes(): Promise<Dish[]> {
-    const snapshot = await db.collection(COLLECTIONS.DISHES).get();
-    return snapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data()
-    } as Dish));
+    const snapshot = await db.ref(COLLECTIONS.DISHES).once('value');
+    const data = snapshot.val();
+    if (!data) return [];
+    return Object.entries(data).map(([id, dish]: [string, any]) => ({ id, ...dish }));
   }
 
   async getDish(id: string): Promise<Dish | undefined> {
-    const doc = await db.collection(COLLECTIONS.DISHES).doc(id).get();
-    if (!doc.exists) return undefined;
-    return { id: doc.id, ...doc.data() } as Dish;
+    const snapshot = await db.ref(`${COLLECTIONS.DISHES}/${id}`).once('value');
+    const data = snapshot.val();
+    if (!data) return undefined;
+    return { id, ...data };
   }
 
   async createDish(dish: InsertDish): Promise<Dish> {
+    const id = generateId();
     const dishData = { ...dish, image: dish.image ?? null };
-    const docRef = await db.collection(COLLECTIONS.DISHES).add(dishData);
-    return { id: docRef.id, ...dishData };
+    await db.ref(`${COLLECTIONS.DISHES}/${id}`).set(dishData);
+    return { id, ...dishData };
   }
 
   async updateDish(id: string, dish: Partial<InsertDish>): Promise<Dish | undefined> {
-    const docRef = db.collection(COLLECTIONS.DISHES).doc(id);
-    const doc = await docRef.get();
-    if (!doc.exists) return undefined;
-    
-    await docRef.update(dish);
-    const updated = await docRef.get();
-    return { id: updated.id, ...updated.data() } as Dish;
+    const existing = await this.getDish(id);
+    if (!existing) return undefined;
+    await db.ref(`${COLLECTIONS.DISHES}/${id}`).update(dish);
+    return { ...existing, ...dish };
   }
 
   async deleteDish(id: string): Promise<void> {
-    await db.collection(COLLECTIONS.DISHES).doc(id).delete();
+    await db.ref(`${COLLECTIONS.DISHES}/${id}`).remove();
   }
 
   // Orders
   async getAllOrders(): Promise<Order[]> {
-    const snapshot = await db.collection(COLLECTIONS.ORDERS)
-      .orderBy('createdAt', 'desc')
-      .get();
-    
-    return snapshot.docs.map(doc => {
-      const data = doc.data();
-      return {
-        id: doc.id,
-        ...data,
-        createdAt: data.createdAt?.toDate() || new Date(),
-      } as Order;
-    });
+    const snapshot = await db.ref(COLLECTIONS.ORDERS).orderByChild('createdAt').once('value');
+    const data = snapshot.val();
+    if (!data) return [];
+    return Object.entries(data)
+      .map(([id, order]: [string, any]) => ({
+        id,
+        ...order,
+        createdAt: new Date(order.createdAt),
+      }))
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
   }
 
   async getOrder(id: string): Promise<Order | undefined> {
-    const doc = await db.collection(COLLECTIONS.ORDERS).doc(id).get();
-    if (!doc.exists) return undefined;
-    
-    const data = doc.data()!;
+    const snapshot = await db.ref(`${COLLECTIONS.ORDERS}/${id}`).once('value');
+    const data = snapshot.val();
+    if (!data) return undefined;
     return {
-      id: doc.id,
+      id,
       ...data,
-      createdAt: data.createdAt?.toDate() || new Date(),
-    } as Order;
+      createdAt: new Date(data.createdAt),
+    };
   }
 
   async createOrder(order: InsertOrder): Promise<Order> {
+    const id = generateId();
     const orderData = {
       customerId: order.customerId ?? null,
       tableNumber: order.tableNumber ?? null,
@@ -171,39 +172,33 @@ export class DatabaseStorage implements IStorage {
       status: order.status,
       kitchenStatus: order.kitchenStatus,
       total: order.total,
-      createdAt: Timestamp.now(),
+      createdAt: new Date().toISOString(),
     };
-    
-    const docRef = await db.collection(COLLECTIONS.ORDERS).add(orderData);
+    await db.ref(`${COLLECTIONS.ORDERS}/${id}`).set(orderData);
     return {
-      id: docRef.id,
+      id,
       ...orderData,
-      createdAt: orderData.createdAt.toDate(),
+      createdAt: new Date(orderData.createdAt),
     };
   }
 
   async updateOrderStatus(id: string, status: string): Promise<Order | undefined> {
-    const docRef = db.collection(COLLECTIONS.ORDERS).doc(id);
-    const doc = await docRef.get();
-    if (!doc.exists) return undefined;
-    
-    await docRef.update({ status });
-    return this.getOrder(id);
+    const existing = await this.getOrder(id);
+    if (!existing) return undefined;
+    await db.ref(`${COLLECTIONS.ORDERS}/${id}`).update({ status });
+    return { ...existing, status };
   }
 
   // Order Items
   async getOrderItems(orderId: string): Promise<OrderItem[]> {
-    const snapshot = await db.collection(COLLECTIONS.ORDER_ITEMS)
-      .where('orderId', '==', orderId)
-      .get();
-    
-    return snapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data()
-    } as OrderItem));
+    const snapshot = await db.ref(COLLECTIONS.ORDER_ITEMS).orderByChild('orderId').equalTo(orderId).once('value');
+    const data = snapshot.val();
+    if (!data) return [];
+    return Object.entries(data).map(([id, item]: [string, any]) => ({ id, ...item }));
   }
 
   async createOrderItem(item: InsertOrderItem): Promise<OrderItem> {
+    const id = generateId();
     const itemData = {
       orderId: item.orderId,
       dishId: item.dishId,
@@ -211,24 +206,21 @@ export class DatabaseStorage implements IStorage {
       price: item.price,
       notes: item.notes ?? null,
     };
-    
-    const docRef = await db.collection(COLLECTIONS.ORDER_ITEMS).add(itemData);
-    return { id: docRef.id, ...itemData };
+    await db.ref(`${COLLECTIONS.ORDER_ITEMS}/${id}`).set(itemData);
+    return { id, ...itemData };
   }
 
   // Customers
   async getAllCustomers(): Promise<Customer[]> {
-    const snapshot = await db.collection(COLLECTIONS.CUSTOMERS).get();
-    
-    return snapshot.docs
-      .map(doc => {
-        const data = doc.data();
-        return {
-          id: doc.id,
-          ...data,
-          lastVisit: data.lastVisit?.toDate() || null,
-        } as Customer;
-      })
+    const snapshot = await db.ref(COLLECTIONS.CUSTOMERS).once('value');
+    const data = snapshot.val();
+    if (!data) return [];
+    return Object.entries(data)
+      .map(([id, customer]: [string, any]) => ({
+        id,
+        ...customer,
+        lastVisit: customer.lastVisit ? new Date(customer.lastVisit) : null,
+      }))
       .sort((a, b) => {
         if (!a.lastVisit) return 1;
         if (!b.lastVisit) return -1;
@@ -237,60 +229,55 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getCustomer(id: string): Promise<Customer | undefined> {
-    const doc = await db.collection(COLLECTIONS.CUSTOMERS).doc(id).get();
-    if (!doc.exists) return undefined;
-    
-    const data = doc.data()!;
+    const snapshot = await db.ref(`${COLLECTIONS.CUSTOMERS}/${id}`).once('value');
+    const data = snapshot.val();
+    if (!data) return undefined;
     return {
-      id: doc.id,
+      id,
       ...data,
-      lastVisit: data.lastVisit?.toDate() || null,
-    } as Customer;
+      lastVisit: data.lastVisit ? new Date(data.lastVisit) : null,
+    };
   }
 
   async createCustomer(customer: InsertCustomer): Promise<Customer> {
+    const id = generateId();
     const customerData = {
       ...customer,
-      lastVisit: customer.lastVisit ? Timestamp.fromDate(customer.lastVisit) : null,
+      lastVisit: customer.lastVisit ? customer.lastVisit.toISOString() : null,
     };
-    
-    const docRef = await db.collection(COLLECTIONS.CUSTOMERS).add(customerData);
+    await db.ref(`${COLLECTIONS.CUSTOMERS}/${id}`).set(customerData);
     return {
-      id: docRef.id,
-      name: customer.name,
-      phone: customer.phone,
-      lifetimeValue: customer.lifetimeValue,
-      lastVisit: customer.lastVisit || null,
+      id,
+      ...customerData,
+      lastVisit: customerData.lastVisit ? new Date(customerData.lastVisit) : null,
     };
   }
 
   async updateCustomer(id: string, customer: Partial<InsertCustomer>): Promise<Customer | undefined> {
-    const docRef = db.collection(COLLECTIONS.CUSTOMERS).doc(id);
-    const doc = await docRef.get();
-    if (!doc.exists) return undefined;
-    
+    const existing = await this.getCustomer(id);
+    if (!existing) return undefined;
     const updateData: any = { ...customer };
     if (customer.lastVisit) {
-      updateData.lastVisit = Timestamp.fromDate(customer.lastVisit);
+      updateData.lastVisit = customer.lastVisit.toISOString();
     }
-    
-    await docRef.update(updateData);
-    return this.getCustomer(id);
+    await db.ref(`${COLLECTIONS.CUSTOMERS}/${id}`).update(updateData);
+    return {
+      ...existing,
+      ...customer,
+    };
   }
 
   // Tables
   async getAllTables(): Promise<Table[]> {
-    const snapshot = await db.collection(COLLECTIONS.TABLES).get();
-    
-    return snapshot.docs
-      .map(doc => {
-        const data = doc.data();
-        return {
-          id: doc.id,
-          ...data,
-          createdAt: data.createdAt?.toDate() || new Date(),
-        } as Table;
-      })
+    const snapshot = await db.ref(COLLECTIONS.TABLES).once('value');
+    const data = snapshot.val();
+    if (!data) return [];
+    return Object.entries(data)
+      .map(([id, table]: [string, any]) => ({
+        id,
+        ...table,
+        createdAt: new Date(table.createdAt),
+      }))
       .sort((a, b) => {
         if (a.section !== b.section) return a.section.localeCompare(b.section);
         return a.number.localeCompare(b.number);
@@ -298,85 +285,82 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getTable(id: string): Promise<Table | undefined> {
-    const doc = await db.collection(COLLECTIONS.TABLES).doc(id).get();
-    if (!doc.exists) return undefined;
-    
-    const data = doc.data()!;
+    const snapshot = await db.ref(`${COLLECTIONS.TABLES}/${id}`).once('value');
+    const data = snapshot.val();
+    if (!data) return undefined;
     return {
-      id: doc.id,
+      id,
       ...data,
-      createdAt: data.createdAt?.toDate() || new Date(),
-    } as Table;
+      createdAt: new Date(data.createdAt),
+    };
   }
 
   async createTable(table: InsertTable): Promise<Table> {
     // Check for duplicate table number in the same section
-    const existingSnapshot = await db.collection(COLLECTIONS.TABLES)
-      .where('number', '==', table.number)
-      .where('section', '==', table.section)
-      .get();
-    
-    if (!existingSnapshot.empty) {
+    const allTables = await this.getAllTables();
+    const existing = allTables.find(t => t.number === table.number && t.section === table.section);
+    if (existing) {
       throw new Error(`Table ${table.number} already exists in ${table.section} section`);
     }
     
+    const id = generateId();
     const tableData = {
       ...table,
-      createdAt: Timestamp.now(),
+      createdAt: new Date().toISOString(),
     };
-    
-    const docRef = await db.collection(COLLECTIONS.TABLES).add(tableData);
+    await db.ref(`${COLLECTIONS.TABLES}/${id}`).set(tableData);
     return {
-      id: docRef.id,
+      id,
       ...tableData,
-      createdAt: tableData.createdAt.toDate(),
+      createdAt: new Date(tableData.createdAt),
     };
   }
 
   async updateTable(id: string, table: Partial<InsertTable>): Promise<Table | undefined> {
-    const docRef = db.collection(COLLECTIONS.TABLES).doc(id);
-    const doc = await docRef.get();
-    if (!doc.exists) return undefined;
-    
-    const existing = doc.data() as Table;
+    const existing = await this.getTable(id);
+    if (!existing) return undefined;
     
     // Check for duplicate table number in the same section (excluding current table)
     if (table.number || table.section) {
       const numberToCheck = table.number || existing.number;
       const sectionToCheck = table.section || existing.section;
       
-      const duplicateSnapshot = await db.collection(COLLECTIONS.TABLES)
-        .where('number', '==', numberToCheck)
-        .where('section', '==', sectionToCheck)
-        .get();
+      const allTables = await this.getAllTables();
+      const duplicate = allTables.find(t => 
+        t.id !== id && 
+        t.number === numberToCheck && 
+        t.section === sectionToCheck
+      );
       
-      const duplicate = duplicateSnapshot.docs.find(d => d.id !== id);
       if (duplicate) {
         throw new Error(`Table ${numberToCheck} already exists in ${sectionToCheck} section`);
       }
     }
     
-    await docRef.update(table);
-    return this.getTable(id);
+    await db.ref(`${COLLECTIONS.TABLES}/${id}`).update(table);
+    return {
+      ...existing,
+      ...table,
+    };
   }
 
   async deleteTable(id: string): Promise<void> {
-    await db.collection(COLLECTIONS.TABLES).doc(id).delete();
+    await db.ref(`${COLLECTIONS.TABLES}/${id}`).remove();
   }
 
   // Analytics
   async getDailySales(): Promise<number> {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
+    const todayISO = today.toISOString();
     
-    const snapshot = await db.collection(COLLECTIONS.ORDERS)
-      .where('createdAt', '>=', Timestamp.fromDate(today))
-      .get();
+    const snapshot = await db.ref(COLLECTIONS.ORDERS).orderByChild('createdAt').startAt(todayISO).once('value');
+    const data = snapshot.val();
+    if (!data) return 0;
     
     let total = 0;
-    snapshot.docs.forEach(doc => {
-      const data = doc.data();
-      total += parseFloat(data.total || '0');
+    Object.values(data).forEach((order: any) => {
+      total += parseFloat(order.total || '0');
     });
     
     return total;
@@ -385,83 +369,70 @@ export class DatabaseStorage implements IStorage {
   async getOrderCount(): Promise<number> {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
+    const todayISO = today.toISOString();
     
-    const snapshot = await db.collection(COLLECTIONS.ORDERS)
-      .where('createdAt', '>=', Timestamp.fromDate(today))
-      .get();
+    const snapshot = await db.ref(COLLECTIONS.ORDERS).orderByChild('createdAt').startAt(todayISO).once('value');
+    const data = snapshot.val();
+    if (!data) return 0;
     
-    return snapshot.size;
+    return Object.keys(data).length;
   }
 
   async getAverageTicket(): Promise<number> {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
+    const todayISO = today.toISOString();
     
-    const snapshot = await db.collection(COLLECTIONS.ORDERS)
-      .where('createdAt', '>=', Timestamp.fromDate(today))
-      .get();
+    const snapshot = await db.ref(COLLECTIONS.ORDERS).orderByChild('createdAt').startAt(todayISO).once('value');
+    const data = snapshot.val();
+    if (!data) return 0;
     
-    if (snapshot.empty) return 0;
+    const orders = Object.values(data);
+    if (orders.length === 0) return 0;
     
     let total = 0;
-    snapshot.docs.forEach(doc => {
-      const data = doc.data();
-      total += parseFloat(data.total || '0');
+    orders.forEach((order: any) => {
+      total += parseFloat(order.total || '0');
     });
     
-    return total / snapshot.size;
+    return total / orders.length;
   }
 
   async getTopDishes(limit: number = 3): Promise<Array<{ dishId: string; name: string; image: string | null; orders: number }>> {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
+    const todayISO = today.toISOString();
     
     // Get today's orders
-    const ordersSnapshot = await db.collection(COLLECTIONS.ORDERS)
-      .where('createdAt', '>=', Timestamp.fromDate(today))
-      .get();
+    const ordersSnapshot = await db.ref(COLLECTIONS.ORDERS).orderByChild('createdAt').startAt(todayISO).once('value');
+    const ordersData = ordersSnapshot.val();
+    if (!ordersData) return [];
     
-    if (ordersSnapshot.empty) return [];
+    const orderIds = Object.keys(ordersData);
     
-    const orderIds = ordersSnapshot.docs.map(doc => doc.id);
+    // Get all order items
+    const itemsSnapshot = await db.ref(COLLECTIONS.ORDER_ITEMS).once('value');
+    const itemsData = itemsSnapshot.val();
+    if (!itemsData) return [];
     
-    // Get all order items for today's orders (batch in groups of 10 due to Firestore 'in' limitation)
+    // Count dishes per order
     const dishCounts = new Map<string, Set<string>>();
-    
-    for (let i = 0; i < orderIds.length; i += 10) {
-      const batch = orderIds.slice(i, i + 10);
-      const itemsSnapshot = await db.collection(COLLECTIONS.ORDER_ITEMS)
-        .where('orderId', 'in', batch)
-        .get();
-      
-      itemsSnapshot.docs.forEach(doc => {
-        const data = doc.data();
-        if (!dishCounts.has(data.dishId)) {
-          dishCounts.set(data.dishId, new Set());
+    Object.values(itemsData).forEach((item: any) => {
+      if (orderIds.includes(item.orderId)) {
+        if (!dishCounts.has(item.dishId)) {
+          dishCounts.set(item.dishId, new Set());
         }
-        dishCounts.get(data.dishId)!.add(data.orderId);
-      });
-    }
+        dishCounts.get(item.dishId)!.add(item.orderId);
+      }
+    });
     
-    // Get dish details
-    const dishIds = Array.from(dishCounts.keys());
-    const dishes = new Map<string, any>();
+    // Get dish details and sort by count
+    const dishesSnapshot = await db.ref(COLLECTIONS.DISHES).once('value');
+    const dishesData = dishesSnapshot.val();
     
-    for (let i = 0; i < dishIds.length; i += 10) {
-      const batch = dishIds.slice(i, i + 10);
-      const dishesSnapshot = await db.collection(COLLECTIONS.DISHES)
-        .where('__name__', 'in', batch)
-        .get();
-      
-      dishesSnapshot.docs.forEach(doc => {
-        dishes.set(doc.id, doc.data());
-      });
-    }
-    
-    // Sort and return top dishes
-    return Array.from(dishCounts.entries())
+    const topDishes = Array.from(dishCounts.entries())
       .map(([dishId, orderIds]) => {
-        const dish = dishes.get(dishId);
+        const dish = dishesData?.[dishId];
         return {
           dishId,
           name: dish?.name || 'Unknown',
@@ -471,71 +442,71 @@ export class DatabaseStorage implements IStorage {
       })
       .sort((a, b) => b.orders - a.orders)
       .slice(0, limit);
+    
+    return topDishes;
   }
 
   // Ingredients
   async getAllIngredients(): Promise<Ingredient[]> {
-    const snapshot = await db.collection(COLLECTIONS.INGREDIENTS).get();
-    
-    return snapshot.docs
-      .map(doc => {
-        const data = doc.data();
-        return {
-          id: doc.id,
-          ...data,
-          createdAt: data.createdAt?.toDate() || new Date(),
-          updatedAt: data.updatedAt?.toDate() || new Date(),
-        } as Ingredient;
-      })
+    const snapshot = await db.ref(COLLECTIONS.INGREDIENTS).once('value');
+    const data = snapshot.val();
+    if (!data) return [];
+    return Object.entries(data)
+      .map(([id, ingredient]: [string, any]) => ({
+        id,
+        ...ingredient,
+        createdAt: new Date(ingredient.createdAt),
+        updatedAt: new Date(ingredient.updatedAt),
+      }))
       .sort((a, b) => a.name.localeCompare(b.name));
   }
 
   async getIngredient(id: string): Promise<Ingredient | undefined> {
-    const doc = await db.collection(COLLECTIONS.INGREDIENTS).doc(id).get();
-    if (!doc.exists) return undefined;
-    
-    const data = doc.data()!;
+    const snapshot = await db.ref(`${COLLECTIONS.INGREDIENTS}/${id}`).once('value');
+    const data = snapshot.val();
+    if (!data) return undefined;
     return {
-      id: doc.id,
+      id,
       ...data,
-      createdAt: data.createdAt?.toDate() || new Date(),
-      updatedAt: data.updatedAt?.toDate() || new Date(),
-    } as Ingredient;
+      createdAt: new Date(data.createdAt),
+      updatedAt: new Date(data.updatedAt),
+    };
   }
 
   async createIngredient(ingredient: InsertIngredient): Promise<Ingredient> {
-    const now = Timestamp.now();
+    const id = generateId();
+    const now = new Date().toISOString();
     const ingredientData = {
       ...ingredient,
       createdAt: now,
       updatedAt: now,
     };
-    
-    const docRef = await db.collection(COLLECTIONS.INGREDIENTS).add(ingredientData);
+    await db.ref(`${COLLECTIONS.INGREDIENTS}/${id}`).set(ingredientData);
     return {
-      id: docRef.id,
+      id,
       ...ingredientData,
-      createdAt: now.toDate(),
-      updatedAt: now.toDate(),
+      createdAt: new Date(now),
+      updatedAt: new Date(now),
     };
   }
 
   async updateIngredient(id: string, ingredient: Partial<InsertIngredient>): Promise<Ingredient | undefined> {
-    const docRef = db.collection(COLLECTIONS.INGREDIENTS).doc(id);
-    const doc = await docRef.get();
-    if (!doc.exists) return undefined;
-    
+    const existing = await this.getIngredient(id);
+    if (!existing) return undefined;
     const updateData = {
       ...ingredient,
-      updatedAt: Timestamp.now(),
+      updatedAt: new Date().toISOString(),
     };
-    
-    await docRef.update(updateData);
-    return this.getIngredient(id);
+    await db.ref(`${COLLECTIONS.INGREDIENTS}/${id}`).update(updateData);
+    return {
+      ...existing,
+      ...ingredient,
+      updatedAt: new Date(updateData.updatedAt),
+    };
   }
 
   async deleteIngredient(id: string): Promise<void> {
-    await db.collection(COLLECTIONS.INGREDIENTS).doc(id).delete();
+    await db.ref(`${COLLECTIONS.INGREDIENTS}/${id}`).remove();
   }
 
   async updateIngredientStock(id: string, quantity: number): Promise<Ingredient | undefined> {
@@ -543,12 +514,16 @@ export class DatabaseStorage implements IStorage {
     if (!ingredient) return undefined;
     
     const newStock = parseFloat(ingredient.currentStock) + quantity;
-    await db.collection(COLLECTIONS.INGREDIENTS).doc(id).update({
+    await db.ref(`${COLLECTIONS.INGREDIENTS}/${id}`).update({
       currentStock: newStock.toString(),
-      updatedAt: Timestamp.now(),
+      updatedAt: new Date().toISOString(),
     });
     
-    return this.getIngredient(id);
+    return {
+      ...ingredient,
+      currentStock: newStock.toString(),
+      updatedAt: new Date(),
+    };
   }
 
   async getLowStockIngredients(): Promise<Ingredient[]> {
@@ -560,116 +535,94 @@ export class DatabaseStorage implements IStorage {
 
   // Dish Ingredients
   async getDishIngredients(dishId: string): Promise<Array<DishIngredient & { ingredient: Ingredient }>> {
-    const snapshot = await db.collection(COLLECTIONS.DISH_INGREDIENTS)
-      .where('dishId', '==', dishId)
-      .get();
+    const snapshot = await db.ref(COLLECTIONS.DISH_INGREDIENTS).orderByChild('dishId').equalTo(dishId).once('value');
+    const data = snapshot.val();
+    if (!data) return [];
     
     const results = await Promise.all(
-      snapshot.docs.map(async (doc) => {
-        const data = doc.data();
-        const ingredient = await this.getIngredient(data.ingredientId);
-        if (!ingredient) return null;
-        
+      Object.entries(data).map(async ([id, dishIngredient]: [string, any]) => {
+        const ingredient = await this.getIngredient(dishIngredient.ingredientId);
         return {
-          id: doc.id,
-          ...data,
-          createdAt: data.createdAt?.toDate() || new Date(),
-          ingredient,
-        } as DishIngredient & { ingredient: Ingredient };
+          id,
+          ...dishIngredient,
+          createdAt: new Date(dishIngredient.createdAt),
+          ingredient: ingredient!,
+        };
       })
     );
     
-    return results.filter(r => r !== null) as Array<DishIngredient & { ingredient: Ingredient }>;
+    return results.filter(r => r.ingredient);
   }
 
   async addDishIngredient(dishIngredient: InsertDishIngredient): Promise<DishIngredient> {
+    const id = generateId();
     const dishIngredientData = {
       ...dishIngredient,
-      createdAt: Timestamp.now(),
+      createdAt: new Date().toISOString(),
     };
-    
-    const docRef = await db.collection(COLLECTIONS.DISH_INGREDIENTS).add(dishIngredientData);
+    await db.ref(`${COLLECTIONS.DISH_INGREDIENTS}/${id}`).set(dishIngredientData);
     return {
-      id: docRef.id,
+      id,
       ...dishIngredientData,
-      createdAt: dishIngredientData.createdAt.toDate(),
+      createdAt: new Date(dishIngredientData.createdAt),
     };
   }
 
   async removeDishIngredient(id: string): Promise<void> {
-    await db.collection(COLLECTIONS.DISH_INGREDIENTS).doc(id).delete();
+    await db.ref(`${COLLECTIONS.DISH_INGREDIENTS}/${id}`).remove();
   }
 
   async updateDishIngredient(id: string, dishIngredient: Partial<InsertDishIngredient>): Promise<DishIngredient | undefined> {
-    const docRef = db.collection(COLLECTIONS.DISH_INGREDIENTS).doc(id);
-    const doc = await docRef.get();
-    if (!doc.exists) return undefined;
+    const snapshot = await db.ref(`${COLLECTIONS.DISH_INGREDIENTS}/${id}`).once('value');
+    const existing = snapshot.val();
+    if (!existing) return undefined;
     
-    await docRef.update(dishIngredient);
-    const updated = await docRef.get();
-    const data = updated.data()!;
-    
+    await db.ref(`${COLLECTIONS.DISH_INGREDIENTS}/${id}`).update(dishIngredient);
     return {
-      id: updated.id,
-      ...data,
-      createdAt: data.createdAt?.toDate() || new Date(),
-    } as DishIngredient;
+      id,
+      ...existing,
+      ...dishIngredient,
+      createdAt: new Date(existing.createdAt),
+    };
   }
 
   // Orders - Kitchen
   async getActiveOrders(): Promise<Order[]> {
-    const snapshot = await db.collection(COLLECTIONS.ORDERS)
-      .where('status', 'in', ['pending', 'confirmed', 'preparing'])
-      .orderBy('createdAt', 'desc')
-      .get();
-    
-    return snapshot.docs.map(doc => {
-      const data = doc.data();
-      return {
-        id: doc.id,
-        ...data,
-        createdAt: data.createdAt?.toDate() || new Date(),
-      } as Order;
-    });
+    const allOrders = await this.getAllOrders();
+    return allOrders.filter(order => 
+      ['pending', 'confirmed', 'preparing'].includes(order.status)
+    );
   }
 
   async updateOrderKitchenStatus(id: string, kitchenStatus: string): Promise<Order | undefined> {
-    const docRef = db.collection(COLLECTIONS.ORDERS).doc(id);
-    const doc = await docRef.get();
-    if (!doc.exists) return undefined;
-    
-    await docRef.update({ kitchenStatus });
-    return this.getOrder(id);
+    const existing = await this.getOrder(id);
+    if (!existing) return undefined;
+    await db.ref(`${COLLECTIONS.ORDERS}/${id}`).update({ kitchenStatus });
+    return { ...existing, kitchenStatus };
   }
 
   async getKOTOrders(): Promise<Array<Order & { items: Array<OrderItem & { dish: Dish }> }>> {
-    const snapshot = await db.collection(COLLECTIONS.ORDERS)
-      .where('kitchenStatus', 'in', ['sent', 'preparing'])
-      .orderBy('createdAt', 'desc')
-      .get();
-    
-    const orders = snapshot.docs.map(doc => {
-      const data = doc.data();
-      return {
-        id: doc.id,
-        ...data,
-        createdAt: data.createdAt?.toDate() || new Date(),
-      } as Order;
-    });
+    const allOrders = await this.getAllOrders();
+    const kotOrders = allOrders.filter(order => 
+      ['sent', 'preparing'].includes(order.kitchenStatus)
+    );
     
     const ordersWithItems = await Promise.all(
-      orders.map(async (order) => {
+      kotOrders.map(async (order) => {
         const items = await this.getOrderItems(order.id);
         const itemsWithDishes = await Promise.all(
           items.map(async (item) => {
             const dish = await this.getDish(item.dishId);
-            return dish ? { ...item, dish } : null;
+            return {
+              ...item,
+              dish: dish!,
+            };
           })
         );
         
         return {
           ...order,
-          items: itemsWithDishes.filter(item => item !== null) as Array<OrderItem & { dish: Dish }>,
+          items: itemsWithDishes.filter(item => item.dish),
         };
       })
     );
@@ -685,8 +638,9 @@ export class DatabaseStorage implements IStorage {
       throw new Error('Email already registered');
     }
 
+    const id = generateId();
     const hashedPassword = hashPassword(owner.password);
-    const now = Timestamp.now();
+    const now = new Date().toISOString();
     
     const ownerData = {
       email: owner.email,
@@ -700,14 +654,14 @@ export class DatabaseStorage implements IStorage {
       updatedAt: now,
     };
 
-    const docRef = await db.collection(COLLECTIONS.RESTAURANT_OWNERS).add(ownerData);
+    await db.ref(`${COLLECTIONS.RESTAURANT_OWNERS}/${id}`).set(ownerData);
     
     const { password, ...ownerWithoutPassword } = ownerData;
     return {
-      id: docRef.id,
+      id,
       ...ownerWithoutPassword,
-      createdAt: ownerData.createdAt.toDate(),
-      updatedAt: ownerData.updatedAt.toDate(),
+      createdAt: new Date(ownerData.createdAt),
+      updatedAt: new Date(ownerData.updatedAt),
     };
   }
 
@@ -727,49 +681,53 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getOwnerByEmail(email: string): Promise<RestaurantOwner | undefined> {
-    const snapshot = await db.collection(COLLECTIONS.RESTAURANT_OWNERS)
-      .where('email', '==', email)
-      .limit(1)
-      .get();
+    const snapshot = await db.ref(COLLECTIONS.RESTAURANT_OWNERS)
+      .orderByChild('email')
+      .equalTo(email)
+      .once('value');
     
-    if (snapshot.empty) return undefined;
+    const data = snapshot.val();
+    if (!data) return undefined;
     
-    const doc = snapshot.docs[0];
-    const data = doc.data();
+    const [id, ownerData] = Object.entries(data)[0] as [string, any];
     return {
-      id: doc.id,
-      ...data,
-      createdAt: data.createdAt?.toDate() || new Date(),
-      updatedAt: data.updatedAt?.toDate() || new Date(),
-    } as RestaurantOwner;
+      id,
+      ...ownerData,
+      createdAt: new Date(ownerData.createdAt),
+      updatedAt: new Date(ownerData.updatedAt),
+    };
   }
 
   async getOwnerById(id: string): Promise<Omit<RestaurantOwner, 'password'> | undefined> {
-    const doc = await db.collection(COLLECTIONS.RESTAURANT_OWNERS).doc(id).get();
-    if (!doc.exists) return undefined;
+    const snapshot = await db.ref(`${COLLECTIONS.RESTAURANT_OWNERS}/${id}`).once('value');
+    const data = snapshot.val();
+    if (!data) return undefined;
     
-    const data = doc.data()!;
     const { password, ...ownerWithoutPassword } = data;
     return {
-      id: doc.id,
+      id,
       ...ownerWithoutPassword,
-      createdAt: data.createdAt?.toDate() || new Date(),
-      updatedAt: data.updatedAt?.toDate() || new Date(),
-    } as Omit<RestaurantOwner, 'password'>;
+      createdAt: new Date(data.createdAt),
+      updatedAt: new Date(data.updatedAt),
+    };
   }
 
   async updateOwnerProfile(id: string, updates: Partial<Omit<InsertRestaurantOwner, 'email' | 'password'>>): Promise<Omit<RestaurantOwner, 'password'> | undefined> {
-    const docRef = db.collection(COLLECTIONS.RESTAURANT_OWNERS).doc(id);
-    const doc = await docRef.get();
-    if (!doc.exists) return undefined;
+    const existing = await this.getOwnerById(id);
+    if (!existing) return undefined;
     
     const updateData = {
       ...updates,
-      updatedAt: Timestamp.now(),
+      updatedAt: new Date().toISOString(),
     };
     
-    await docRef.update(updateData);
-    return this.getOwnerById(id);
+    await db.ref(`${COLLECTIONS.RESTAURANT_OWNERS}/${id}`).update(updateData);
+    
+    return {
+      ...existing,
+      ...updates,
+      updatedAt: new Date(updateData.updatedAt),
+    };
   }
 }
 

@@ -1,12 +1,13 @@
 import "dotenv/config";
-import { initializeFirebase } from "./firebase";
+import { initializeFirebase, Timestamp } from "./firebase";
 import { COLLECTIONS } from "@shared/schema";
+import * as crypto from "crypto";
 
 const db = initializeFirebase();
 
-// Helper function to generate unique IDs
-function generateId(): string {
-  return Date.now().toString(36) + Math.random().toString(36).substr(2);
+// Helper function to hash passwords
+function hashPassword(password: string): string {
+  return crypto.createHash('sha256').update(password).digest('hex');
 }
 
 const seedDishes = [
@@ -21,70 +22,91 @@ const seedDishes = [
 ];
 
 const seedCustomers = [
-  { name: 'Rajesh Kumar', phone: '+91 98765 43210', lastVisit: new Date().toISOString(), lifetimeValue: '0' },
-  { name: 'Priya Sharma', phone: '+91 98765 43211', lastVisit: new Date().toISOString(), lifetimeValue: '0' },
-  { name: 'Amit Patel', phone: '+91 98765 43212', lastVisit: new Date().toISOString(), lifetimeValue: '0' },
-  { name: 'Sneha Reddy', phone: '+91 98765 43213', lastVisit: new Date().toISOString(), lifetimeValue: '0' },
-  { name: 'Vikram Singh', phone: '+91 98765 43214', lastVisit: new Date().toISOString(), lifetimeValue: '0' },
+  { name: 'Rajesh Kumar', phone: '+91 98765 43210', lastVisit: Timestamp.now(), lifetimeValue: '0' },
+  { name: 'Priya Sharma', phone: '+91 98765 43211', lastVisit: Timestamp.now(), lifetimeValue: '0' },
+  { name: 'Amit Patel', phone: '+91 98765 43212', lastVisit: Timestamp.now(), lifetimeValue: '0' },
+  { name: 'Sneha Reddy', phone: '+91 98765 43213', lastVisit: Timestamp.now(), lifetimeValue: '0' },
+  { name: 'Vikram Singh', phone: '+91 98765 43214', lastVisit: Timestamp.now(), lifetimeValue: '0' },
 ];
 
 const seedTables = [
   // Garden section
-  { number: '01', section: 'Garden', capacity: 4, status: 'available', createdAt: new Date().toISOString() },
-  { number: '02', section: 'Garden', capacity: 6, status: 'available', createdAt: new Date().toISOString() },
-  { number: '03', section: 'Garden', capacity: 2, status: 'occupied', createdAt: new Date().toISOString() },
-  { number: '04', section: 'Garden', capacity: 4, status: 'available', createdAt: new Date().toISOString() },
+  { number: '01', section: 'Garden', capacity: 4, status: 'available', createdAt: Timestamp.now() },
+  { number: '02', section: 'Garden', capacity: 6, status: 'available', createdAt: Timestamp.now() },
+  { number: '03', section: 'Garden', capacity: 2, status: 'occupied', createdAt: Timestamp.now() },
+  { number: '04', section: 'Garden', capacity: 4, status: 'available', createdAt: Timestamp.now() },
   // Balcony section
-  { number: '01', section: 'Balcony', capacity: 4, status: 'available', createdAt: new Date().toISOString() },
-  { number: '02', section: 'Balcony', capacity: 2, status: 'reserved', createdAt: new Date().toISOString() },
-  { number: '03', section: 'Balcony', capacity: 6, status: 'available', createdAt: new Date().toISOString() },
+  { number: '01', section: 'Balcony', capacity: 4, status: 'available', createdAt: Timestamp.now() },
+  { number: '02', section: 'Balcony', capacity: 2, status: 'reserved', createdAt: Timestamp.now() },
+  { number: '03', section: 'Balcony', capacity: 6, status: 'available', createdAt: Timestamp.now() },
   // Open section
-  { number: '01', section: 'Open', capacity: 4, status: 'available', createdAt: new Date().toISOString() },
-  { number: '02', section: 'Open', capacity: 8, status: 'available', createdAt: new Date().toISOString() },
-  { number: '03', section: 'Open', capacity: 4, status: 'cleaning', createdAt: new Date().toISOString() },
-  { number: '04', section: 'Open', capacity: 2, status: 'available', createdAt: new Date().toISOString() },
+  { number: '01', section: 'Open', capacity: 4, status: 'available', createdAt: Timestamp.now() },
+  { number: '02', section: 'Open', capacity: 8, status: 'available', createdAt: Timestamp.now() },
+  { number: '03', section: 'Open', capacity: 4, status: 'cleaning', createdAt: Timestamp.now() },
+  { number: '04', section: 'Open', capacity: 2, status: 'available', createdAt: Timestamp.now() },
   // Indoor section
-  { number: '01', section: 'Indoor', capacity: 4, status: 'available', createdAt: new Date().toISOString() },
-  { number: '02', section: 'Indoor', capacity: 6, status: 'occupied', createdAt: new Date().toISOString() },
-  { number: '03', section: 'Indoor', capacity: 4, status: 'available', createdAt: new Date().toISOString() },
+  { number: '01', section: 'Indoor', capacity: 4, status: 'available', createdAt: Timestamp.now() },
+  { number: '02', section: 'Indoor', capacity: 6, status: 'occupied', createdAt: Timestamp.now() },
+  { number: '03', section: 'Indoor', capacity: 4, status: 'available', createdAt: Timestamp.now() },
   // VIP section
-  { number: '01', section: 'VIP', capacity: 8, status: 'available', createdAt: new Date().toISOString() },
-  { number: '02', section: 'VIP', capacity: 10, status: 'reserved', createdAt: new Date().toISOString() },
+  { number: '01', section: 'VIP', capacity: 8, status: 'available', createdAt: Timestamp.now() },
+  { number: '02', section: 'VIP', capacity: 10, status: 'reserved', createdAt: Timestamp.now() },
 ];
 
+const now = Timestamp.now();
 const seedIngredients = [
-  { name: 'Chicken', unit: 'kg', currentStock: '25.5', minLevel: '5.0', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
-  { name: 'Paneer', unit: 'kg', currentStock: '12.0', minLevel: '3.0', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
-  { name: 'Rice', unit: 'kg', currentStock: '50.0', minLevel: '10.0', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
-  { name: 'Onions', unit: 'kg', currentStock: '8.5', minLevel: '2.0', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
-  { name: 'Tomatoes', unit: 'kg', currentStock: '15.0', minLevel: '5.0', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
-  { name: 'Ginger', unit: 'kg', currentStock: '2.5', minLevel: '0.5', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
-  { name: 'Garlic', unit: 'kg', currentStock: '3.0', minLevel: '0.5', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
-  { name: 'Cooking Oil', unit: 'l', currentStock: '20.0', minLevel: '5.0', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
-  { name: 'Butter', unit: 'kg', currentStock: '4.5', minLevel: '1.0', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
-  { name: 'Cream', unit: 'l', currentStock: '8.0', minLevel: '2.0', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
-  { name: 'Spices Mix', unit: 'kg', currentStock: '5.0', minLevel: '1.0', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
-  { name: 'Lentils (Dal)', unit: 'kg', currentStock: '10.0', minLevel: '2.0', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
-  { name: 'Dosa Batter', unit: 'kg', currentStock: '6.0', minLevel: '2.0', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
-  { name: 'Sugar', unit: 'kg', currentStock: '12.0', minLevel: '3.0', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
-  { name: 'Milk', unit: 'l', currentStock: '15.0', minLevel: '5.0', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
-  { name: 'Flour', unit: 'kg', currentStock: '18.0', minLevel: '5.0', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
-  { name: 'Yogurt', unit: 'kg', currentStock: '7.5', minLevel: '2.0', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
-  { name: 'Coriander', unit: 'kg', currentStock: '1.2', minLevel: '0.3', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
-  { name: 'Mint', unit: 'kg', currentStock: '0.8', minLevel: '0.2', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }, // Low stock
-  { name: 'Cashews', unit: 'kg', currentStock: '3.5', minLevel: '1.0', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+  { name: 'Chicken', unit: 'kg', currentStock: '25.5', minLevel: '5.0', createdAt: now, updatedAt: now },
+  { name: 'Paneer', unit: 'kg', currentStock: '12.0', minLevel: '3.0', createdAt: now, updatedAt: now },
+  { name: 'Rice', unit: 'kg', currentStock: '50.0', minLevel: '10.0', createdAt: now, updatedAt: now },
+  { name: 'Onions', unit: 'kg', currentStock: '8.5', minLevel: '2.0', createdAt: now, updatedAt: now },
+  { name: 'Tomatoes', unit: 'kg', currentStock: '15.0', minLevel: '5.0', createdAt: now, updatedAt: now },
+  { name: 'Ginger', unit: 'kg', currentStock: '2.5', minLevel: '0.5', createdAt: now, updatedAt: now },
+  { name: 'Garlic', unit: 'kg', currentStock: '3.0', minLevel: '0.5', createdAt: now, updatedAt: now },
+  { name: 'Cooking Oil', unit: 'l', currentStock: '20.0', minLevel: '5.0', createdAt: now, updatedAt: now },
+  { name: 'Butter', unit: 'kg', currentStock: '4.5', minLevel: '1.0', createdAt: now, updatedAt: now },
+  { name: 'Cream', unit: 'l', currentStock: '8.0', minLevel: '2.0', createdAt: now, updatedAt: now },
+  { name: 'Spices Mix', unit: 'kg', currentStock: '5.0', minLevel: '1.0', createdAt: now, updatedAt: now },
+  { name: 'Lentils (Dal)', unit: 'kg', currentStock: '10.0', minLevel: '2.0', createdAt: now, updatedAt: now },
+  { name: 'Dosa Batter', unit: 'kg', currentStock: '6.0', minLevel: '2.0', createdAt: now, updatedAt: now },
+  { name: 'Sugar', unit: 'kg', currentStock: '12.0', minLevel: '3.0', createdAt: now, updatedAt: now },
+  { name: 'Milk', unit: 'l', currentStock: '15.0', minLevel: '5.0', createdAt: now, updatedAt: now },
+  { name: 'Flour', unit: 'kg', currentStock: '18.0', minLevel: '5.0', createdAt: now, updatedAt: now },
+  { name: 'Yogurt', unit: 'kg', currentStock: '7.5', minLevel: '2.0', createdAt: now, updatedAt: now },
+  { name: 'Coriander', unit: 'kg', currentStock: '1.2', minLevel: '0.3', createdAt: now, updatedAt: now },
+  { name: 'Mint', unit: 'kg', currentStock: '0.8', minLevel: '0.2', createdAt: now, updatedAt: now }, // Low stock
+  { name: 'Cashews', unit: 'kg', currentStock: '3.5', minLevel: '1.0', createdAt: now, updatedAt: now },
 ];
 
 async function seed() {
-  console.log("Seeding Firebase Realtime Database...");
+  console.log("Seeding Firestore Database...");
   
   try {
+    // Create a test owner first
+    console.log("Creating test owner...");
+    const ownerData = {
+      email: 'test@restaurant.com',
+      password: hashPassword('password123'),
+      restaurantName: 'Test Restaurant',
+      ownerName: 'Test Owner',
+      phone: '+91 98765 43210',
+      address: '123 Test Street, Mumbai',
+      cuisine: 'Indian',
+      createdAt: Timestamp.now(),
+      updatedAt: Timestamp.now(),
+    };
+    
+    const ownerRef = await db.collection(COLLECTIONS.RESTAURANT_OWNERS).add(ownerData);
+    const ownerId = ownerRef.id;
+    console.log(`✓ Test owner created with ID: ${ownerId}`);
+    console.log(`  Email: test@restaurant.com`);
+    console.log(`  Password: password123`);
+    
     // Insert dishes
     console.log("Seeding dishes...");
     const dishIds: string[] = [];
     for (const dish of seedDishes) {
-      const docRef = await db.ref(COLLECTIONS.DISHES).push(dish);
-      dishIds.push(docRef.key);
+      const docRef = await db.collection(COLLECTIONS.DISHES).add({ ...dish, ownerId });
+      dishIds.push(docRef.id);
     }
     console.log(`✓ ${dishIds.length} dishes seeded successfully`);
 
@@ -92,8 +114,8 @@ async function seed() {
     console.log("Seeding customers...");
     const customerIds: string[] = [];
     for (const customer of seedCustomers) {
-      const docRef = await db.ref(COLLECTIONS.CUSTOMERS).push(customer);
-      customerIds.push(docRef.key);
+      const docRef = await db.collection(COLLECTIONS.CUSTOMERS).add({ ...customer, ownerId });
+      customerIds.push(docRef.id);
     }
     console.log(`✓ ${customerIds.length} customers seeded successfully`);
 
@@ -101,8 +123,8 @@ async function seed() {
     console.log("Seeding tables...");
     const tableIds: string[] = [];
     for (const table of seedTables) {
-      const docRef = await db.ref(COLLECTIONS.TABLES).push(table);
-      tableIds.push(docRef.key);
+      const docRef = await db.collection(COLLECTIONS.TABLES).add({ ...table, ownerId });
+      tableIds.push(docRef.id);
     }
     console.log(`✓ ${tableIds.length} tables seeded successfully`);
 
@@ -110,8 +132,8 @@ async function seed() {
     console.log("Seeding ingredients...");
     const ingredientIds: string[] = [];
     for (const ingredient of seedIngredients) {
-      const docRef = await db.ref(COLLECTIONS.INGREDIENTS).push(ingredient);
-      ingredientIds.push(docRef.key);
+      const docRef = await db.collection(COLLECTIONS.INGREDIENTS).add({ ...ingredient, ownerId });
+      ingredientIds.push(docRef.id);
     }
     console.log(`✓ ${ingredientIds.length} ingredients seeded successfully`);
 
@@ -127,7 +149,7 @@ async function seed() {
         status: 'served',
         total: '0',
         kitchenStatus: 'ready',
-        createdAt: new Date(today.getTime() - 2 * 60 * 60 * 1000), // 2 hours ago
+        createdAt: Timestamp.fromMillis(today.getTime() - 2 * 60 * 60 * 1000), // 2 hours ago
       },
       {
         customerId: customerIds[1] || null,
@@ -137,7 +159,7 @@ async function seed() {
         status: 'served',
         total: '0',
         kitchenStatus: 'ready',
-        createdAt: new Date(today.getTime() - 1 * 60 * 60 * 1000), // 1 hour ago
+        createdAt: Timestamp.fromMillis(today.getTime() - 1 * 60 * 60 * 1000), // 1 hour ago
       },
       {
         customerId: customerIds[2] || null,
@@ -147,7 +169,7 @@ async function seed() {
         status: 'served',
         total: '0',
         kitchenStatus: 'ready',
-        createdAt: new Date(today.getTime() - 30 * 60 * 1000), // 30 minutes ago
+        createdAt: Timestamp.fromMillis(today.getTime() - 30 * 60 * 1000), // 30 minutes ago
       },
       {
         customerId: customerIds[3] || null,
@@ -157,7 +179,7 @@ async function seed() {
         status: 'served',
         total: '0',
         kitchenStatus: 'ready',
-        createdAt: new Date(today.getTime() - 15 * 60 * 1000), // 15 minutes ago
+        createdAt: Timestamp.fromMillis(today.getTime() - 15 * 60 * 1000), // 15 minutes ago
       },
       {
         customerId: customerIds[4] || null,
@@ -167,7 +189,7 @@ async function seed() {
         status: 'waitlist',
         total: '0',
         kitchenStatus: 'pending',
-        createdAt: new Date().toISOString(),
+        createdAt: Timestamp.now(),
       },
       // Active orders for Online Orders page
       {
@@ -178,7 +200,7 @@ async function seed() {
         status: 'pending',
         total: '0',
         kitchenStatus: 'pending',
-        createdAt: new Date(today.getTime() - 10 * 60 * 1000), // 10 minutes ago
+        createdAt: Timestamp.fromMillis(today.getTime() - 10 * 60 * 1000), // 10 minutes ago
       },
       {
         customerId: customerIds[1] || null,
@@ -188,7 +210,7 @@ async function seed() {
         status: 'confirmed',
         total: '0',
         kitchenStatus: 'pending',
-        createdAt: new Date(today.getTime() - 5 * 60 * 1000), // 5 minutes ago
+        createdAt: Timestamp.fromMillis(today.getTime() - 5 * 60 * 1000), // 5 minutes ago
       },
       {
         customerId: customerIds[2] || null,
@@ -198,7 +220,7 @@ async function seed() {
         status: 'preparing',
         total: '0',
         kitchenStatus: 'sent',
-        createdAt: new Date(today.getTime() - 15 * 60 * 1000), // 15 minutes ago
+        createdAt: Timestamp.fromMillis(today.getTime() - 15 * 60 * 1000), // 15 minutes ago
       },
       {
         customerId: customerIds[3] || null,
@@ -208,14 +230,14 @@ async function seed() {
         status: 'preparing',
         total: '0',
         kitchenStatus: 'preparing',
-        createdAt: new Date(today.getTime() - 20 * 60 * 1000), // 20 minutes ago
+        createdAt: Timestamp.fromMillis(today.getTime() - 20 * 60 * 1000), // 20 minutes ago
       },
     ];
 
     const orderIds: string[] = [];
     for (const order of orderData) {
-      const docRef = await db.ref(COLLECTIONS.ORDERS).push(order);
-      orderIds.push(docRef.key);
+      const docRef = await db.collection(COLLECTIONS.ORDERS).add({ ...order, ownerId });
+      orderIds.push(docRef.id);
     }
     console.log(`✓ ${orderIds.length} orders seeded successfully`);
 
@@ -234,7 +256,7 @@ async function seed() {
         const dish = seedDishes[randomDishIndex];
         const quantity = Math.floor(Math.random() * 2) + 1;
         
-        await db.ref(COLLECTIONS.ORDER_ITEMS).push({
+        await db.collection(COLLECTIONS.ORDER_ITEMS).add({
           orderId,
           dishId,
           quantity,
@@ -247,7 +269,7 @@ async function seed() {
       }
       
       // Update order total
-      await db.ref(`${COLLECTIONS.ORDERS}/${orderId}`).update({
+      await db.collection(COLLECTIONS.ORDERS).doc(orderId).update({
           total: orderTotal.toString(),
       });
     }

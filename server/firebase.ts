@@ -1,11 +1,11 @@
 import { initializeApp, cert, getApps, App } from 'firebase-admin/app';
-import { getDatabase, Database } from 'firebase-admin/database';
+import { getFirestore, Firestore, Timestamp } from 'firebase-admin/firestore';
 
 let app: App;
-let db: Database;
+let db: Firestore;
 
-// Initialize Firebase Admin with Realtime Database
-export function initializeFirebase(): Database {
+// Initialize Firebase Admin with Firestore
+export function initializeFirebase(): Firestore {
   if (getApps().length === 0) {
     // For development: Use environment variables
     if (process.env.FIREBASE_PROJECT_ID) {
@@ -15,24 +15,27 @@ export function initializeFirebase(): Database {
           clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
           privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
         }),
-        databaseURL: process.env.FIREBASE_DATABASE_URL || `https://${process.env.FIREBASE_PROJECT_ID}-default-rtdb.firebaseio.com`,
       });
     } else {
       // For local development with emulator
       app = initializeApp({
         projectId: 'demo-smartchef',
-        databaseURL: 'http://localhost:9000?ns=demo-smartchef',
       });
     }
     
-    db = getDatabase(app);
+    db = getFirestore(app);
     
-    console.log('Firebase Realtime Database initialized');
+    // Set Firestore settings
+    db.settings({
+      ignoreUndefinedProperties: true,
+    });
+    
+    console.log('Firebase Firestore initialized');
   } else {
-    db = getDatabase();
+    db = getFirestore();
   }
   
   return db;
 }
 
-export { db };
+export { db, Timestamp };
