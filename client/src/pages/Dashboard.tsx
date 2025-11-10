@@ -3,6 +3,7 @@ import { Card } from "@/components/ui/card";
 import { ChefHat, DollarSign, ShoppingCart, TrendingUp, Lightbulb } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { useQuery } from "@tanstack/react-query";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface AnalyticsData {
   dailySales: number;
@@ -30,6 +31,7 @@ const categoryData = [
 ];
 
 export default function Dashboard() {
+  const { profile } = useAuth();
   const { data: analytics, isLoading } = useQuery<AnalyticsData>({
     queryKey: ['/api/analytics'],
   });
@@ -40,6 +42,9 @@ export default function Dashboard() {
 
   const { dailySales, orderCount, avgTicket, topDishes } = analytics;
 
+  // Extract first name from owner name
+  const firstName = profile?.ownerName?.split(' ')[0] || 'Chef';
+
   return (
     <div className="p-6 h-full overflow-y-auto">
       <div className="max-w-7xl mx-auto space-y-6">
@@ -49,7 +54,7 @@ export default function Dashboard() {
               <ChefHat className="w-8 h-8 text-primary" />
             </div>
             <div>
-              <h1 className="text-3xl font-bold mb-2">Hello Charan,</h1>
+              <h1 className="text-3xl font-bold mb-2">Hello {firstName},</h1>
               <p className="text-lg text-muted-foreground">ready to thrive today?</p>
             </div>
           </div>

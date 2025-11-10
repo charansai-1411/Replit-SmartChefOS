@@ -67,6 +67,19 @@ export interface DishIngredient {
   createdAt: Date;
 }
 
+export interface RestaurantOwner {
+  id: string;
+  email: string;
+  password: string;
+  restaurantName: string;
+  ownerName: string;
+  phone: string;
+  address: string;
+  cuisine: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 // Zod Schemas for validation
 export const insertDishSchema = z.object({
   name: z.string().min(1),
@@ -132,6 +145,29 @@ export const insertDishIngredientSchema = z.object({
 
 export const updateDishIngredientSchema = insertDishIngredientSchema.partial();
 
+export const insertRestaurantOwnerSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(6),
+  restaurantName: z.string().min(1),
+  ownerName: z.string().min(1),
+  phone: z.string().min(10),
+  address: z.string().min(1),
+  cuisine: z.string().min(1),
+});
+
+export const loginSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(6),
+});
+
+export const updateRestaurantOwnerSchema = z.object({
+  restaurantName: z.string().min(1).optional(),
+  ownerName: z.string().min(1).optional(),
+  phone: z.string().min(10).optional(),
+  address: z.string().min(1).optional(),
+  cuisine: z.string().min(1).optional(),
+});
+
 // Type exports for Insert operations
 export type InsertDish = z.infer<typeof insertDishSchema>;
 export type InsertOrder = z.infer<typeof insertOrderSchema>;
@@ -140,6 +176,8 @@ export type InsertCustomer = z.infer<typeof insertCustomerSchema>;
 export type InsertTable = z.infer<typeof insertTableSchema>;
 export type InsertIngredient = z.infer<typeof insertIngredientSchema>;
 export type InsertDishIngredient = z.infer<typeof insertDishIngredientSchema>;
+export type InsertRestaurantOwner = z.infer<typeof insertRestaurantOwnerSchema>;
+export type LoginCredentials = z.infer<typeof loginSchema>;
 
 // Collection names
 export const COLLECTIONS = {
@@ -150,4 +188,5 @@ export const COLLECTIONS = {
   TABLES: 'tables',
   INGREDIENTS: 'ingredients',
   DISH_INGREDIENTS: 'dishIngredients',
+  RESTAURANT_OWNERS: 'restaurantOwners',
 } as const;

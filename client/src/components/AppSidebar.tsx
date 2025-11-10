@@ -24,7 +24,7 @@ const menuItems = [
 const bottomItems = [
   { title: "Settings", url: "/settings", icon: Settings },
   { title: "Help Center", url: "/help", icon: HelpCircle },
-  { title: "Logout", url: "/logout", icon: LogOut },
+
 ];
 
 export function AppSidebar() {

@@ -13,15 +13,29 @@ import {
   type InsertIngredient,
   type DishIngredient,
   type InsertDishIngredient,
+  type RestaurantOwner,
+  type InsertRestaurantOwner,
+  type LoginCredentials,
   COLLECTIONS
 } from "@shared/schema";
 import { initializeFirebase } from "./firebase";
+import * as crypto from "crypto";
 
 const db = initializeFirebase();
 
 // Helper function to generate unique IDs
 function generateId(): string {
   return Date.now().toString(36) + Math.random().toString(36).substr(2);
+}
+
+// Helper function to hash passwords
+function hashPassword(password: string): string {
+  return crypto.createHash('sha256').update(password).digest('hex');
+}
+
+// Helper function to verify passwords
+function verifyPassword(password: string, hash: string): boolean {
+  return hashPassword(password) === hash;
 }
 
 export interface IStorage {
@@ -80,6 +94,13 @@ export interface IStorage {
   getActiveOrders(): Promise<Order[]>;
   updateOrderKitchenStatus(id: string, kitchenStatus: string): Promise<Order | undefined>;
   getKOTOrders(): Promise<Array<Order & { items: Array<OrderItem & { dish: Dish }> }>>;
+  
+  // Authentication
+  registerOwner(owner: InsertRestaurantOwner): Promise<Omit<RestaurantOwner, 'password'>>;
+  loginOwner(credentials: LoginCredentials): Promise<Omit<RestaurantOwner, 'password'> | null>;
+  getOwnerByEmail(email: string): Promise<RestaurantOwner | undefined>;
+  getOwnerById(id: string): Promise<Omit<RestaurantOwner, 'password'> | undefined>;
+  updateOwnerProfile(id: string, updates: Partial<Omit<InsertRestaurantOwner, 'email' | 'password'>>): Promise<Omit<RestaurantOwner, 'password'> | undefined>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -100,8 +121,9 @@ export class DatabaseStorage implements IStorage {
 
   async createDish(dish: InsertDish): Promise<Dish> {
     const id = generateId();
-    await db.ref(`${COLLECTIONS.DISHES}/${id}`).set(dish);
-    return { id, ...dish };
+    const dishData = { ...dish, image: dish.image ?? null };
+    await db.ref(`${COLLECTIONS.DISHES}/${id}`).set(dishData);
+    return { id, ...dishData };
   }
 
   async updateDish(id: string, dish: Partial<InsertDish>): Promise<Dish | undefined> {
@@ -606,6 +628,106 @@ export class DatabaseStorage implements IStorage {
     );
     
     return ordersWithItems;
+  }
+
+  // Authentication
+  async registerOwner(owner: InsertRestaurantOwner): Promise<Omit<RestaurantOwner, 'password'>> {
+    // Check if email already exists
+    const existing = await this.getOwnerByEmail(owner.email);
+    if (existing) {
+      throw new Error('Email already registered');
+    }
+
+    const id = generateId();
+    const hashedPassword = hashPassword(owner.password);
+    const now = new Date().toISOString();
+    
+    const ownerData = {
+      email: owner.email,
+      password: hashedPassword,
+      restaurantName: owner.restaurantName,
+      ownerName: owner.ownerName,
+      phone: owner.phone,
+      address: owner.address,
+      cuisine: owner.cuisine,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    await db.ref(`${COLLECTIONS.RESTAURANT_OWNERS}/${id}`).set(ownerData);
+    
+    const { password, ...ownerWithoutPassword } = ownerData;
+    return {
+      id,
+      ...ownerWithoutPassword,
+      createdAt: new Date(ownerData.createdAt),
+      updatedAt: new Date(ownerData.updatedAt),
+    };
+  }
+
+  async loginOwner(credentials: LoginCredentials): Promise<Omit<RestaurantOwner, 'password'> | null> {
+    const owner = await this.getOwnerByEmail(credentials.email);
+    if (!owner) {
+      return null;
+    }
+
+    const isValid = verifyPassword(credentials.password, owner.password);
+    if (!isValid) {
+      return null;
+    }
+
+    const { password, ...ownerWithoutPassword } = owner;
+    return ownerWithoutPassword;
+  }
+
+  async getOwnerByEmail(email: string): Promise<RestaurantOwner | undefined> {
+    const snapshot = await db.ref(COLLECTIONS.RESTAURANT_OWNERS)
+      .orderByChild('email')
+      .equalTo(email)
+      .once('value');
+    
+    const data = snapshot.val();
+    if (!data) return undefined;
+    
+    const [id, ownerData] = Object.entries(data)[0] as [string, any];
+    return {
+      id,
+      ...ownerData,
+      createdAt: new Date(ownerData.createdAt),
+      updatedAt: new Date(ownerData.updatedAt),
+    };
+  }
+
+  async getOwnerById(id: string): Promise<Omit<RestaurantOwner, 'password'> | undefined> {
+    const snapshot = await db.ref(`${COLLECTIONS.RESTAURANT_OWNERS}/${id}`).once('value');
+    const data = snapshot.val();
+    if (!data) return undefined;
+    
+    const { password, ...ownerWithoutPassword } = data;
+    return {
+      id,
+      ...ownerWithoutPassword,
+      createdAt: new Date(data.createdAt),
+      updatedAt: new Date(data.updatedAt),
+    };
+  }
+
+  async updateOwnerProfile(id: string, updates: Partial<Omit<InsertRestaurantOwner, 'email' | 'password'>>): Promise<Omit<RestaurantOwner, 'password'> | undefined> {
+    const existing = await this.getOwnerById(id);
+    if (!existing) return undefined;
+    
+    const updateData = {
+      ...updates,
+      updatedAt: new Date().toISOString(),
+    };
+    
+    await db.ref(`${COLLECTIONS.RESTAURANT_OWNERS}/${id}`).update(updateData);
+    
+    return {
+      ...existing,
+      ...updates,
+      updatedAt: new Date(updateData.updatedAt),
+    };
   }
 }
 

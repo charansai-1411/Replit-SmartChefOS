@@ -1,4 +1,4 @@
-import type { Express } from "express";
+import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { 
@@ -12,12 +12,98 @@ import {
   updateTableSchema,
   insertIngredientSchema,
   updateIngredientSchema,
-  insertDishIngredientSchema
+  insertDishIngredientSchema,
+  insertRestaurantOwnerSchema,
+  loginSchema,
+  updateRestaurantOwnerSchema
 } from "@shared/schema";
 
+// Authentication middleware
+function requireAuth(req: Request, res: Response, next: NextFunction) {
+  if (!req.session.ownerId) {
+    return res.status(401).json({ error: "Authentication required" });
+  }
+  next();
+}
+
 export async function registerRoutes(app: Express): Promise<Server> {
-  // Dishes API
-  app.get("/api/dishes", async (req, res) => {
+  // Authentication Routes
+  app.post("/api/auth/register", async (req, res) => {
+    try {
+      const validatedData = insertRestaurantOwnerSchema.parse(req.body);
+      const owner = await storage.registerOwner(validatedData);
+      req.session.ownerId = owner.id;
+      res.status(201).json(owner);
+    } catch (error) {
+      if (error instanceof Error && error.message === 'Email already registered') {
+        return res.status(409).json({ error: error.message });
+      }
+      res.status(400).json({ error: "Invalid registration data" });
+    }
+  });
+
+  app.post("/api/auth/login", async (req, res) => {
+    try {
+      const validatedData = loginSchema.parse(req.body);
+      const owner = await storage.loginOwner(validatedData);
+      
+      if (!owner) {
+        return res.status(401).json({ error: "Invalid email or password" });
+      }
+      
+      req.session.ownerId = owner.id;
+      res.json(owner);
+    } catch (error) {
+      res.status(400).json({ error: "Invalid login data" });
+    }
+  });
+
+  app.post("/api/auth/logout", (req, res) => {
+    req.session.destroy((err) => {
+      if (err) {
+        return res.status(500).json({ error: "Failed to logout" });
+      }
+      res.json({ message: "Logged out successfully" });
+    });
+  });
+
+  app.get("/api/auth/me", async (req, res) => {
+    if (!req.session.ownerId) {
+      return res.status(401).json({ error: "Not authenticated" });
+    }
+
+    try {
+      const owner = await storage.getOwnerById(req.session.ownerId);
+      if (!owner) {
+        return res.status(404).json({ error: "Owner not found" });
+      }
+      res.json(owner);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch owner data" });
+    }
+  });
+
+  app.patch("/api/auth/profile", async (req, res) => {
+    if (!req.session.ownerId) {
+      return res.status(401).json({ error: "Not authenticated" });
+    }
+
+    try {
+      const validatedData = updateRestaurantOwnerSchema.parse(req.body);
+      const owner = await storage.updateOwnerProfile(req.session.ownerId, validatedData);
+      
+      if (!owner) {
+        return res.status(404).json({ error: "Owner not found" });
+      }
+      
+      res.json(owner);
+    } catch (error) {
+      res.status(400).json({ error: "Invalid profile data" });
+    }
+  });
+
+  // Dishes API (Protected)
+  app.get("/api/dishes", requireAuth, async (req, res) => {
     try {
       const dishes = await storage.getAllDishes();
       res.json(dishes);
@@ -26,7 +112,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/dishes/:id", async (req, res) => {
+  app.get("/api/dishes/:id", requireAuth, async (req, res) => {
     try {
       const dish = await storage.getDish(req.params.id);
       if (!dish) {
@@ -38,7 +124,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/dishes", async (req, res) => {
+  app.post("/api/dishes", requireAuth, async (req, res) => {
     try {
       const validatedData = insertDishSchema.parse(req.body);
       const dish = await storage.createDish(validatedData);
@@ -48,7 +134,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.patch("/api/dishes/:id", async (req, res) => {
+  app.patch("/api/dishes/:id", requireAuth, async (req, res) => {
     try {
       const validatedData = updateDishSchema.parse(req.body);
       const dish = await storage.updateDish(req.params.id, validatedData);
@@ -61,7 +147,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete("/api/dishes/:id", async (req, res) => {
+  app.delete("/api/dishes/:id", requireAuth, async (req, res) => {
     try {
       await storage.deleteDish(req.params.id);
       res.status(204).send();
@@ -70,8 +156,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Orders API
-  app.get("/api/orders", async (req, res) => {
+  // Orders API (Protected)
+  app.get("/api/orders", requireAuth, async (req, res) => {
     try {
       const orders = await storage.getAllOrders();
       res.json(orders);
@@ -80,7 +166,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/orders/active", async (req, res) => {
+  app.get("/api/orders/active", requireAuth, async (req, res) => {
     try {
       const orders = await storage.getActiveOrders();
       res.json(orders);
@@ -89,7 +175,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/orders/:id", async (req, res) => {
+  app.get("/api/orders/:id", requireAuth, async (req, res) => {
     try {
       const order = await storage.getOrder(req.params.id);
       if (!order) {
@@ -101,7 +187,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/orders", async (req, res) => {
+  app.post("/api/orders", requireAuth, async (req, res) => {
     try {
       const { order: orderData, items } = req.body;
       const validatedOrder = insertOrderSchema.parse(orderData);
@@ -153,7 +239,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.patch("/api/orders/:id/status", async (req, res) => {
+  app.patch("/api/orders/:id/status", requireAuth, async (req, res) => {
     try {
       const { status } = req.body;
       if (!status) {
@@ -169,7 +255,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.patch("/api/orders/:id/kitchen-status", async (req, res) => {
+  app.patch("/api/orders/:id/kitchen-status", requireAuth, async (req, res) => {
     try {
       const { kitchenStatus } = req.body;
       if (!kitchenStatus) {
@@ -185,7 +271,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/kot", async (req, res) => {
+  app.get("/api/kot", requireAuth, async (req, res) => {
     try {
       const kotOrders = await storage.getKOTOrders();
       res.json(kotOrders);
@@ -194,7 +280,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/orders/:id/items", async (req, res) => {
+  app.get("/api/orders/:id/items", requireAuth, async (req, res) => {
     try {
       const items = await storage.getOrderItems(req.params.id);
       res.json(items);
@@ -203,8 +289,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Customers API
-  app.get("/api/customers", async (req, res) => {
+  // Customers API (Protected)
+  app.get("/api/customers", requireAuth, async (req, res) => {
     try {
       const customers = await storage.getAllCustomers();
       res.json(customers);
@@ -214,7 +300,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/customers/:id", async (req, res) => {
+  app.get("/api/customers/:id", requireAuth, async (req, res) => {
     try {
       const customer = await storage.getCustomer(req.params.id);
       if (!customer) {
@@ -226,7 +312,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/customers", async (req, res) => {
+  app.post("/api/customers", requireAuth, async (req, res) => {
     try {
       const validatedData = insertCustomerSchema.parse(req.body);
       const customer = await storage.createCustomer(validatedData);
@@ -236,7 +322,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.patch("/api/customers/:id", async (req, res) => {
+  app.patch("/api/customers/:id", requireAuth, async (req, res) => {
     try {
       const validatedData = updateCustomerSchema.parse(req.body);
       const customer = await storage.updateCustomer(req.params.id, validatedData);
@@ -249,8 +335,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Tables API
-  app.get("/api/tables", async (req, res) => {
+  // Tables API (Protected)
+  app.get("/api/tables", requireAuth, async (req, res) => {
     try {
       const tables = await storage.getAllTables();
       res.json(tables);
@@ -260,7 +346,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/tables/:id", async (req, res) => {
+  app.get("/api/tables/:id", requireAuth, async (req, res) => {
     try {
       const table = await storage.getTable(req.params.id);
       if (!table) {
@@ -272,7 +358,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/tables", async (req, res) => {
+  app.post("/api/tables", requireAuth, async (req, res) => {
     try {
       const validatedData = insertTableSchema.parse(req.body);
       const table = await storage.createTable(validatedData);
@@ -283,7 +369,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.patch("/api/tables/:id", async (req, res) => {
+  app.patch("/api/tables/:id", requireAuth, async (req, res) => {
     try {
       const validatedData = updateTableSchema.parse(req.body);
       const table = await storage.updateTable(req.params.id, validatedData);
@@ -297,7 +383,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete("/api/tables/:id", async (req, res) => {
+  app.delete("/api/tables/:id", requireAuth, async (req, res) => {
     try {
       await storage.deleteTable(req.params.id);
       res.status(204).send();
@@ -306,8 +392,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Ingredients API
-  app.get("/api/ingredients", async (req, res) => {
+  // Ingredients API (Protected)
+  app.get("/api/ingredients", requireAuth, async (req, res) => {
     try {
       const ingredients = await storage.getAllIngredients();
       res.json(ingredients);
@@ -316,7 +402,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/ingredients/low-stock", async (req, res) => {
+  app.get("/api/ingredients/low-stock", requireAuth, async (req, res) => {
     try {
       const ingredients = await storage.getLowStockIngredients();
       res.json(ingredients);
@@ -325,7 +411,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/ingredients/:id", async (req, res) => {
+  app.get("/api/ingredients/:id", requireAuth, async (req, res) => {
     try {
       const ingredient = await storage.getIngredient(req.params.id);
       if (!ingredient) {
@@ -337,7 +423,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/ingredients", async (req, res) => {
+  app.post("/api/ingredients", requireAuth, async (req, res) => {
     try {
       const validatedData = insertIngredientSchema.parse(req.body);
       const ingredient = await storage.createIngredient(validatedData);
@@ -347,7 +433,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.patch("/api/ingredients/:id", async (req, res) => {
+  app.patch("/api/ingredients/:id", requireAuth, async (req, res) => {
     try {
       const validatedData = updateIngredientSchema.parse(req.body);
       const ingredient = await storage.updateIngredient(req.params.id, validatedData);
@@ -360,7 +446,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete("/api/ingredients/:id", async (req, res) => {
+  app.delete("/api/ingredients/:id", requireAuth, async (req, res) => {
     try {
       await storage.deleteIngredient(req.params.id);
       res.status(204).send();
@@ -369,8 +455,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Dish Ingredients API
-  app.get("/api/dishes/:id/ingredients", async (req, res) => {
+  // Dish Ingredients API (Protected)
+  app.get("/api/dishes/:id/ingredients", requireAuth, async (req, res) => {
     try {
       const dishIngredients = await storage.getDishIngredients(req.params.id);
       res.json(dishIngredients);
@@ -379,7 +465,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/dishes/:id/ingredients", async (req, res) => {
+  app.post("/api/dishes/:id/ingredients", requireAuth, async (req, res) => {
     try {
       const validatedData = insertDishIngredientSchema.parse({
         ...req.body,
@@ -392,7 +478,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete("/api/dish-ingredients/:id", async (req, res) => {
+  app.delete("/api/dish-ingredients/:id", requireAuth, async (req, res) => {
     try {
       await storage.removeDishIngredient(req.params.id);
       res.status(204).send();
@@ -401,8 +487,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Analytics API
-  app.get("/api/analytics", async (req, res) => {
+  // Analytics API (Protected)
+  app.get("/api/analytics", requireAuth, async (req, res) => {
     try {
       const [dailySales, orderCount, avgTicket, topDishes] = await Promise.all([
         storage.getDailySales(),
