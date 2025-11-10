@@ -52,7 +52,7 @@ function Router() {
       <Route path="/">
         {() => (
           <ProtectedLayout>
-            <Redirect to="/dashboard" />
+            <Tables />
           </ProtectedLayout>
         )}
       </Route>

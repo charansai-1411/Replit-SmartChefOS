@@ -52,7 +52,7 @@ export default function Login() {
   // Redirect if already authenticated
   useEffect(() => {
     if (profile) {
-      setLocation("/dashboard");
+      setLocation("/");
     }
   }, [profile, setLocation]);
 
