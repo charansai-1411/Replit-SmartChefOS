@@ -23,7 +23,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Plus, Edit, Trash2, AlertTriangle } from "lucide-react";
+import { Plus, Minus, Edit, Trash2, AlertTriangle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import type { Ingredient } from "@shared/schema";
 
@@ -130,8 +130,30 @@ export default function Inventory() {
     }
   };
 
+  const handleQuickAdjust = (ingredient: Ingredient, adjustment: number) => {
+    const newStock = parseFloat(ingredient.currentStock) + adjustment;
+    if (newStock < 0) {
+      toast({ description: "Stock cannot be negative", variant: "destructive" });
+      return;
+    }
+    updateMutation.mutate({
+      id: ingredient.id,
+      data: { currentStock: newStock.toString() },
+    });
+  };
+
   const isLowStock = (ingredient: Ingredient) => {
     return parseFloat(ingredient.currentStock) <= parseFloat(ingredient.minLevel);
+  };
+
+  const getStockStatus = (ingredient: Ingredient) => {
+    const current = parseFloat(ingredient.currentStock);
+    const min = parseFloat(ingredient.minLevel);
+    const ratio = current / (min * 3); // Full stock = 3x minimum
+    
+    if (ratio >= 1) return { color: 'bg-green-500', label: 'Full Stock', percentage: 100 };
+    if (ratio >= 0.5) return { color: 'bg-orange-500', label: 'Moderate', percentage: ratio * 100 };
+    return { color: 'bg-red-500', label: 'Low Stock', percentage: ratio * 100 };
   };
 
   if (isLoading) {
@@ -257,56 +279,93 @@ export default function Inventory() {
                 <TableHead>Name</TableHead>
                 <TableHead>Current Stock</TableHead>
                 <TableHead>Minimum Level</TableHead>
-                <TableHead>Status</TableHead>
+                <TableHead>Stock Status</TableHead>
+                <TableHead>Quick Adjust</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {ingredients.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
+                  <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
                     No ingredients found. Add your first ingredient to get started.
                   </TableCell>
                 </TableRow>
               ) : (
-                ingredients.map((ingredient) => (
-                  <TableRow key={ingredient.id} className="hover:bg-muted/50 transition-colors duration-200">
-                    <TableCell className="font-medium text-base py-4">{ingredient.name}</TableCell>
-                    <TableCell className="text-base py-4">
-                      {parseFloat(ingredient.currentStock).toFixed(2)} {ingredient.unit}
-                    </TableCell>
-                    <TableCell className="text-base py-4">
-                      {parseFloat(ingredient.minLevel).toFixed(2)} {ingredient.unit}
-                    </TableCell>
-                    <TableCell className="py-4">
-                      {isLowStock(ingredient) ? (
-                        <Badge variant="destructive" className="text-sm px-3 py-1">Low Stock</Badge>
-                      ) : (
-                        <Badge variant="secondary" className="text-sm px-3 py-1">In Stock</Badge>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-right py-4">
-                      <div className="flex justify-end gap-2">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-10 w-10 transition-all duration-200 hover:scale-110"
-                          onClick={() => handleOpenDialog(ingredient)}
-                        >
-                          <Edit className="w-5 h-5" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-10 w-10 transition-all duration-200 hover:scale-110"
-                          onClick={() => handleDelete(ingredient.id, ingredient.name)}
-                        >
-                          <Trash2 className="w-5 h-5 text-destructive" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))
+                ingredients.map((ingredient) => {
+                  const stockStatus = getStockStatus(ingredient);
+                  return (
+                    <TableRow key={ingredient.id} className="hover:bg-muted/50 transition-colors duration-200">
+                      <TableCell className="font-medium text-base py-4">{ingredient.name}</TableCell>
+                      <TableCell className="text-base py-4">
+                        {parseFloat(ingredient.currentStock).toFixed(2)} {ingredient.unit}
+                      </TableCell>
+                      <TableCell className="text-base py-4">
+                        {parseFloat(ingredient.minLevel).toFixed(2)} {ingredient.unit}
+                      </TableCell>
+                      <TableCell className="py-4">
+                        <div className="space-y-2">
+                          <div className="flex items-center gap-2">
+                            <div className="flex-1 h-2 bg-gray-200 rounded-full overflow-hidden">
+                              <div 
+                                className={`h-full ${stockStatus.color} transition-all duration-300`}
+                                style={{ width: `${Math.min(stockStatus.percentage, 100)}%` }}
+                              />
+                            </div>
+                          </div>
+                          <Badge 
+                            variant={isLowStock(ingredient) ? "destructive" : "secondary"} 
+                            className="text-xs px-2 py-0.5"
+                          >
+                            {stockStatus.label}
+                          </Badge>
+                        </div>
+                      </TableCell>
+                      <TableCell className="py-4">
+                        <div className="flex items-center gap-1">
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            className="h-8 w-8"
+                            onClick={() => handleQuickAdjust(ingredient, -1)}
+                            disabled={updateMutation.isPending}
+                          >
+                            <Minus className="w-4 h-4" />
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            className="h-8 w-8"
+                            onClick={() => handleQuickAdjust(ingredient, 1)}
+                            disabled={updateMutation.isPending}
+                          >
+                            <Plus className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-right py-4">
+                        <div className="flex justify-end gap-2">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-10 w-10 transition-all duration-200 hover:scale-110"
+                            onClick={() => handleOpenDialog(ingredient)}
+                          >
+                            <Edit className="w-5 h-5" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-10 w-10 transition-all duration-200 hover:scale-110"
+                            onClick={() => handleDelete(ingredient.id, ingredient.name)}
+                          >
+                            <Trash2 className="w-5 h-5 text-destructive" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })
               )}
             </TableBody>
           </Table>

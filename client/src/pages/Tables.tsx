@@ -73,8 +73,9 @@ export default function Tables() {
       resetForm();
       toast({ description: "Table created successfully" });
     },
-    onError: () => {
-      toast({ description: "Failed to create table", variant: "destructive" });
+    onError: (error: any) => {
+      const message = error?.message || "Failed to create table";
+      toast({ description: message, variant: "destructive" });
     },
   });
 
@@ -89,8 +90,9 @@ export default function Tables() {
       resetForm();
       toast({ description: "Table updated successfully" });
     },
-    onError: () => {
-      toast({ description: "Failed to update table", variant: "destructive" });
+    onError: (error: any) => {
+      const message = error?.message || "Failed to update table";
+      toast({ description: message, variant: "destructive" });
     },
   });
 

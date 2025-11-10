@@ -239,6 +239,7 @@ export default function OrderLine() {
                 itemCount={order.guests || 1}
                 status={order.status === 'pending' ? 'In Kitchen' : order.status}
                 time={formatDistanceToNow(new Date(order.createdAt), { addSuffix: true })}
+                total={parseFloat(order.total)}
               />
             ))}
           </div>
@@ -298,6 +299,7 @@ export default function OrderLine() {
                     itemCount={order.guests || 1}
                     status={order.status === 'pending' ? 'In Kitchen' : order.status}
                     time={formatDistanceToNow(new Date(order.createdAt), { addSuffix: true })}
+                    total={parseFloat(order.total)}
                   />
                 ))}
               </div>

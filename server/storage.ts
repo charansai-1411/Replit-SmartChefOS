@@ -168,11 +168,45 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createTable(table: InsertTable): Promise<Table> {
+    // Check for duplicate table number in the same section
+    const existing = await db
+      .select()
+      .from(tables)
+      .where(and(eq(tables.number, table.number), eq(tables.section, table.section)));
+    
+    if (existing.length > 0) {
+      throw new Error(`Table ${table.number} already exists in ${table.section} section`);
+    }
+    
     const result = await db.insert(tables).values(table).returning();
     return result[0];
   }
 
   async updateTable(id: string, table: Partial<InsertTable>): Promise<Table | undefined> {
+    // Check for duplicate table number in the same section (excluding current table)
+    if (table.number || table.section) {
+      const currentTable = await this.getTable(id);
+      if (!currentTable) return undefined;
+      
+      const numberToCheck = table.number || currentTable.number;
+      const sectionToCheck = table.section || currentTable.section;
+      
+      const existing = await db
+        .select()
+        .from(tables)
+        .where(
+          and(
+            eq(tables.number, numberToCheck),
+            eq(tables.section, sectionToCheck),
+            sql`${tables.id} != ${id}`
+          )
+        );
+      
+      if (existing.length > 0) {
+        throw new Error(`Table ${numberToCheck} already exists in ${sectionToCheck} section`);
+      }
+    }
+    
     const result = await db.update(tables).set(table).where(eq(tables.id, id)).returning();
     return result[0];
   }

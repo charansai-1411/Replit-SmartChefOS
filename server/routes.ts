@@ -278,7 +278,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const table = await storage.createTable(validatedData);
       res.status(201).json(table);
     } catch (error) {
-      res.status(400).json({ error: "Invalid table data" });
+      const errorMessage = error instanceof Error ? error.message : "Invalid table data";
+      res.status(400).json({ error: errorMessage });
     }
   });
 
@@ -291,7 +292,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       res.json(table);
     } catch (error) {
-      res.status(400).json({ error: "Invalid table data" });
+      const errorMessage = error instanceof Error ? error.message : "Invalid table data";
+      res.status(400).json({ error: errorMessage });
     }
   });
 

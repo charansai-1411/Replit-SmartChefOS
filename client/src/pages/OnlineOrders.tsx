@@ -129,6 +129,7 @@ export default function OnlineOrders() {
                       time={formatDistanceToNow(new Date(order.createdAt), {
                         addSuffix: true,
                       })}
+                      total={parseFloat(order.total)}
                     />
                   ))}
                 </div>
