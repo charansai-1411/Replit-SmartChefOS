@@ -61,6 +61,12 @@ export default function OrderLine() {
     queryKey: ['/api/orders'],
   });
 
+  // Fetch orders for this specific table
+  const { data: tableOrders = [] } = useQuery<Order[]>({
+    queryKey: [`/api/orders/table/${tableNumber}`],
+    enabled: !!tableNumber && orderType === 'dine-in',
+  });
+
   // Filter out active orders - they should only appear in Online Orders page
   const orders = allOrders.filter(
     (order) => order.status === 'completed' || order.status === 'cancelled'
@@ -156,6 +162,17 @@ export default function OrderLine() {
 
     try {
       await createOrderMutation.mutateAsync(orderData);
+      
+      // Update table status to occupied if this is a dine-in order
+      if (tableId && orderType === 'dine-in') {
+        await apiRequest('PATCH', `/api/tables/${tableId}`, { status: 'occupied' });
+        queryClient.invalidateQueries({ queryKey: [`/api/tables/${tableId}`] });
+        queryClient.invalidateQueries({ queryKey: ['/api/tables'] });
+      }
+      
+      // Invalidate table orders query to refresh history
+      queryClient.invalidateQueries({ queryKey: [`/api/orders/table/${tableNumber}`] });
+      
       toast({ 
         title: "Order Placed!", 
         description: `Order sent to kitchen` 
@@ -261,25 +278,52 @@ export default function OrderLine() {
         <ResizablePanel defaultSize={75} minSize={50}>
           <div className="h-full overflow-y-auto pr-6 space-y-6">
             <div>
-              <div className="flex items-center gap-4 mb-4">
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => setLocation("/")}
-                  className="rounded-xl"
-                >
-                  <ArrowLeft className="w-4 h-4" />
-                </Button>
-                <div>
-                  <h1 className="text-2xl font-bold">
-                    {orderType === 'takeaway' ? 'Takeaway Order' : 'Dine-in Order'}
-                  </h1>
-                  {table && (
-                    <p className="text-sm text-muted-foreground">
-                      Table {table.number} - {table.section}
-                    </p>
-                  )}
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-4">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setLocation("/")}
+                    className="rounded-xl"
+                  >
+                    <ArrowLeft className="w-4 h-4" />
+                  </Button>
+                  <div>
+                    <h1 className="text-2xl font-bold">
+                      {orderType === 'takeaway' ? 'Takeaway Order' : 'Dine-in Order'}
+                    </h1>
+                    {table && (
+                      <p className="text-sm text-muted-foreground">
+                        Table {table.number} - {table.section}
+                      </p>
+                    )}
+                  </div>
                 </div>
+                
+                {/* Table Order History - Top Right */}
+                {orderType === 'dine-in' && tableOrders.length > 0 && (
+                  <Card className="p-3 max-w-xs">
+                    <h3 className="text-xs font-semibold mb-2 text-muted-foreground">Table History</h3>
+                    <div className="space-y-1 max-h-32 overflow-y-auto">
+                      {tableOrders.slice(0, 5).map((order) => (
+                        <div key={order.id} className="text-xs flex justify-between items-center">
+                          <span className="font-medium">Order #{order.id.slice(0, 6)}</span>
+                          <div className="flex items-center gap-2">
+                            <span className="text-muted-foreground">${parseFloat(order.total).toFixed(2)}</span>
+                            <span className={`px-1.5 py-0.5 rounded text-[10px] ${
+                              order.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                              order.status === 'confirmed' ? 'bg-blue-100 text-blue-800' :
+                              order.status === 'completed' ? 'bg-green-100 text-green-800' :
+                              'bg-gray-100 text-gray-800'
+                            }`}>
+                              {order.status}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </Card>
+                )}
               </div>
               <StatusChips 
                 activeStatus={activeStatus} 

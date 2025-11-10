@@ -49,6 +49,7 @@ export interface IStorage {
   // Orders
   getAllOrders(): Promise<Order[]>;
   getOrder(id: string): Promise<Order | undefined>;
+  getOrdersByTableNumber(tableNumber: string): Promise<Order[]>;
   createOrder(order: InsertOrder): Promise<Order>;
   updateOrderStatus(id: string, status: string): Promise<Order | undefined>;
   
@@ -160,6 +161,11 @@ export class DatabaseStorage implements IStorage {
       ...data,
       createdAt: new Date(data.createdAt),
     };
+  }
+
+  async getOrdersByTableNumber(tableNumber: string): Promise<Order[]> {
+    const allOrders = await this.getAllOrders();
+    return allOrders.filter(order => order.tableNumber === tableNumber);
   }
 
   async createOrder(order: InsertOrder): Promise<Order> {

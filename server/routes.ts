@@ -175,6 +175,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.get("/api/orders/table/:tableNumber", requireAuth, async (req, res) => {
+    try {
+      const orders = await storage.getOrdersByTableNumber(req.params.tableNumber);
+      res.json(orders);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch orders for table" });
+    }
+  });
+
   app.get("/api/orders/:id", requireAuth, async (req, res) => {
     try {
       const order = await storage.getOrder(req.params.id);
