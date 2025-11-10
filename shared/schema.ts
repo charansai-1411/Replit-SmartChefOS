@@ -1,98 +1,153 @@
-import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, integer, boolean, decimal, timestamp } from "drizzle-orm/pg-core";
-import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
-export const dishes = pgTable("dishes", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  name: text("name").notNull(),
-  price: decimal("price", { precision: 10, scale: 2 }).notNull(),
-  category: text("category").notNull(),
-  veg: boolean("veg").notNull().default(true),
-  image: text("image"),
-  available: boolean("available").notNull().default(true),
+// Firebase Firestore Types
+export interface Dish {
+  id: string;
+  name: string;
+  price: string;
+  category: string;
+  veg: boolean;
+  image: string | null;
+  available: boolean;
+}
+
+export interface Order {
+  id: string;
+  customerId: string | null;
+  tableNumber: string | null;
+  guests: number;
+  type: string;
+  status: string;
+  kitchenStatus: string; // pending, sent, preparing, ready
+  total: string;
+  createdAt: Date;
+}
+
+export interface OrderItem {
+  id: string;
+  orderId: string;
+  dishId: string;
+  quantity: number;
+  price: string;
+  notes: string | null;
+}
+
+export interface Customer {
+  id: string;
+  name: string;
+  phone: string;
+  lastVisit: Date | null;
+  lifetimeValue: string;
+}
+
+export interface Table {
+  id: string;
+  number: string;
+  section: string;
+  capacity: number;
+  status: string; // available, occupied, reserved, cleaning
+  createdAt: Date;
+}
+
+export interface Ingredient {
+  id: string;
+  name: string;
+  unit: string; // kg, g, l, ml, pieces, etc.
+  currentStock: string;
+  minLevel: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface DishIngredient {
+  id: string;
+  dishId: string;
+  ingredientId: string;
+  quantity: string;
+  createdAt: Date;
+}
+
+// Zod Schemas for validation
+export const insertDishSchema = z.object({
+  name: z.string().min(1),
+  price: z.string(),
+  category: z.string().min(1),
+  veg: z.boolean().default(true),
+  image: z.string().nullable().optional(),
+  available: z.boolean().default(true),
 });
 
-export const orders = pgTable("orders", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  customerId: varchar("customer_id").references(() => customers.id),
-  tableNumber: text("table_number"),
-  guests: integer("guests").default(1),
-  type: text("type").notNull(),
-  status: text("status").notNull(),
-  kitchenStatus: text("kitchen_status").default("pending"), // pending, sent, preparing, ready
-  total: decimal("total", { precision: 10, scale: 2 }).default("0"),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-});
-
-export const orderItems = pgTable("order_items", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  orderId: varchar("order_id").notNull().references(() => orders.id, { onDelete: 'cascade' }),
-  dishId: varchar("dish_id").notNull().references(() => dishes.id),
-  quantity: integer("quantity").notNull(),
-  price: decimal("price", { precision: 10, scale: 2 }).notNull(),
-  notes: text("notes"),
-});
-
-export const customers = pgTable("customers", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  name: text("name").notNull(),
-  phone: text("phone").notNull(),
-  lastVisit: timestamp("last_visit"),
-  lifetimeValue: decimal("lifetime_value", { precision: 10, scale: 2 }).default("0"),
-});
-
-export const tables = pgTable("tables", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  number: text("number").notNull(),
-  section: text("section").notNull(),
-  capacity: integer("capacity").notNull().default(4),
-  status: text("status").notNull().default("available"), // available, occupied, reserved, cleaning
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-});
-
-export const ingredients = pgTable("ingredients", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  name: text("name").notNull(),
-  unit: text("unit").notNull(), // kg, g, l, ml, pieces, etc.
-  currentStock: decimal("current_stock", { precision: 10, scale: 2 }).notNull().default("0"),
-  minLevel: decimal("min_level", { precision: 10, scale: 2 }).notNull().default("0"),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-  updatedAt: timestamp("updated_at").notNull().defaultNow(),
-});
-
-export const dishIngredients = pgTable("dish_ingredients", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  dishId: varchar("dish_id").notNull().references(() => dishes.id, { onDelete: 'cascade' }),
-  ingredientId: varchar("ingredient_id").notNull().references(() => ingredients.id, { onDelete: 'cascade' }),
-  quantity: decimal("quantity", { precision: 10, scale: 2 }).notNull(),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-});
-
-export const insertDishSchema = createInsertSchema(dishes).omit({ id: true });
 export const updateDishSchema = insertDishSchema.partial();
-export const insertOrderSchema = createInsertSchema(orders).omit({ id: true, createdAt: true });
-export const insertOrderItemSchema = createInsertSchema(orderItems).omit({ id: true });
-export const insertCustomerSchema = createInsertSchema(customers).omit({ id: true });
+
+export const insertOrderSchema = z.object({
+  customerId: z.string().nullable().optional(),
+  tableNumber: z.string().nullable().optional(),
+  guests: z.number().default(1),
+  type: z.string().min(1),
+  status: z.string().min(1),
+  kitchenStatus: z.string().default("pending"),
+  total: z.string().default("0"),
+});
+
+export const insertOrderItemSchema = z.object({
+  orderId: z.string().min(1),
+  dishId: z.string().min(1),
+  quantity: z.number().min(1),
+  price: z.string(),
+  notes: z.string().nullable().optional(),
+});
+
+export const insertCustomerSchema = z.object({
+  name: z.string().min(1),
+  phone: z.string().min(1),
+  lastVisit: z.date().nullable().optional(),
+  lifetimeValue: z.string().default("0"),
+});
+
 export const updateCustomerSchema = insertCustomerSchema.partial();
-export const insertTableSchema = createInsertSchema(tables).omit({ id: true, createdAt: true });
+
+export const insertTableSchema = z.object({
+  number: z.string().min(1),
+  section: z.string().min(1),
+  capacity: z.number().default(4),
+  status: z.string().default("available"),
+});
+
 export const updateTableSchema = insertTableSchema.partial();
-export const insertIngredientSchema = createInsertSchema(ingredients).omit({ id: true, createdAt: true, updatedAt: true });
+
+export const insertIngredientSchema = z.object({
+  name: z.string().min(1),
+  unit: z.string().min(1),
+  currentStock: z.string().default("0"),
+  minLevel: z.string().default("0"),
+});
+
 export const updateIngredientSchema = insertIngredientSchema.partial();
-export const insertDishIngredientSchema = createInsertSchema(dishIngredients).omit({ id: true, createdAt: true });
+
+export const insertDishIngredientSchema = z.object({
+  dishId: z.string().min(1),
+  ingredientId: z.string().min(1),
+  quantity: z.string(),
+});
+
 export const updateDishIngredientSchema = insertDishIngredientSchema.partial();
 
-export type Dish = typeof dishes.$inferSelect;
+// Type exports for Insert operations
 export type InsertDish = z.infer<typeof insertDishSchema>;
-export type Order = typeof orders.$inferSelect;
 export type InsertOrder = z.infer<typeof insertOrderSchema>;
-export type OrderItem = typeof orderItems.$inferSelect;
 export type InsertOrderItem = z.infer<typeof insertOrderItemSchema>;
-export type Customer = typeof customers.$inferSelect;
 export type InsertCustomer = z.infer<typeof insertCustomerSchema>;
-export type Table = typeof tables.$inferSelect;
 export type InsertTable = z.infer<typeof insertTableSchema>;
-export type Ingredient = typeof ingredients.$inferSelect;
 export type InsertIngredient = z.infer<typeof insertIngredientSchema>;
-export type DishIngredient = typeof dishIngredients.$inferSelect;
 export type InsertDishIngredient = z.infer<typeof insertDishIngredientSchema>;
+
+// Collection names
+export const COLLECTIONS = {
+  DISHES: 'dishes',
+  ORDERS: 'orders',
+  ORDER_ITEMS: 'orderItems',
+  CUSTOMERS: 'customers',
+  TABLES: 'tables',
+  INGREDIENTS: 'ingredients',
+  DISH_INGREDIENTS: 'dishIngredients',
+} as const;

@@ -19,7 +19,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Plus, Search, Trash2 } from "lucide-react";
+import { Plus, Search, Trash2, Upload, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -36,22 +36,53 @@ interface DishIngredient {
 export default function ManageDishes() {
   const [selectedCategory, setSelectedCategory] = useState('All Dishes');
   const [searchQuery, setSearchQuery] = useState('');
-  const [editingDishId, setEditingDishId] = useState<string | null>(null);
+  const [editingDishId, setEditingDishId] = useState(null);
   const [newIngredientId, setNewIngredientId] = useState('');
   const [newIngredientQuantity, setNewIngredientQuantity] = useState('');
+  const [isAddDishOpen, setIsAddDishOpen] = useState(false);
+  const [newDishData, setNewDishData] = useState({
+    name: '',
+    price: '',
+    category: '',
+    veg: true,
+    image: null as string | null,
+    available: true,
+  });
+
   const { toast } = useToast();
 
-  const { data: dishes = [], isLoading } = useQuery<Dish[]>({
+  const { data: dishes = [], isLoading } = useQuery({
     queryKey: ['/api/dishes'],
   });
 
-  const { data: ingredients = [] } = useQuery<Ingredient[]>({
+  const { data: ingredients = [] } = useQuery({
     queryKey: ['/api/ingredients'],
   });
 
-  const { data: dishIngredients = [] } = useQuery<DishIngredient[]>({
+  const { data: dishIngredients = [] } = useQuery({
     queryKey: editingDishId ? [`/api/dishes/${editingDishId}/ingredients`] : [''],
     enabled: !!editingDishId,
+  });
+
+  const createDishMutation = useMutation({
+    mutationFn: async (data: any) => {
+      return await apiRequest('POST', '/api/dishes', data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/dishes'] });
+      setIsAddDishOpen(false);
+      setNewDishData({
+        name: '',
+        price: '',
+        category: '',
+        veg: true,
+        image: null,
+        available: true,
+      });
+      toast({
+        description: "Dish added successfully"
+      });
+    },
   });
 
   const updateDishMutation = useMutation({
@@ -75,8 +106,8 @@ export default function ManageDishes() {
   const handleToggleAvailability = (id: string, available: boolean) => {
     const dish = dishes.find(d => d.id === id);
     updateDishMutation.mutate({ id, data: { available } });
-    toast({ 
-      description: `${dish?.name} is now ${available ? 'available' : 'unavailable'}` 
+    toast({
+      description: `${dish?.name} is now ${available ? 'available' : 'unavailable'}`
     });
   };
 
@@ -84,14 +115,16 @@ export default function ManageDishes() {
     mutationFn: async ({ dishId, ingredientId, quantity }: { dishId: string; ingredientId: string; quantity: string }) => {
       return await apiRequest('POST', `/api/dishes/${dishId}/ingredients`, {
         ingredientId,
-        quantity: parseFloat(quantity),
+        quantity: quantity,
       });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [`/api/dishes/${editingDishId}/ingredients`] });
       setNewIngredientId('');
       setNewIngredientQuantity('');
-      toast({ description: "Ingredient added to dish" });
+      toast({
+        description: "Ingredient added to dish"
+      });
     },
   });
 
@@ -101,7 +134,9 @@ export default function ManageDishes() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [`/api/dishes/${editingDishId}/ingredients`] });
-      toast({ description: "Ingredient removed from dish" });
+      toast({
+        description: "Ingredient removed from dish"
+      });
     },
   });
 
@@ -112,15 +147,46 @@ export default function ManageDishes() {
   };
 
   const handleAddIngredient = () => {
-    if (!editingDishId || !newIngredientId || !newIngredientQuantity) {
-      toast({ description: "Please select an ingredient and enter quantity", variant: "destructive" });
-      return;
-    }
+    if (!editingDishId || !newIngredientId || !newIngredientQuantity) return;
+    
     addIngredientMutation.mutate({
       dishId: editingDishId,
       ingredientId: newIngredientId,
       quantity: newIngredientQuantity,
     });
+  };
+
+  const handleCreateDish = () => {
+    if (!newDishData.name || !newDishData.price || !newDishData.category) {
+      toast({
+        description: "Please fill in all required fields",
+        variant: "destructive"
+      });
+      return;
+    }
+    createDishMutation.mutate(newDishData);
+  };
+
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 5 * 1024 * 1024) {
+        toast({
+          description: "Image size should be less than 5MB",
+          variant: "destructive"
+        });
+        return;
+      }
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setNewDishData({ ...newDishData, image: reader.result as string });
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleRemoveImage = () => {
+    setNewDishData({ ...newDishData, image: null });
   };
 
   const handleRemoveIngredient = (id: string) => {
@@ -133,7 +199,7 @@ export default function ManageDishes() {
     const dish = dishes.find(d => d.id === id);
     if (confirm(`Delete ${dish?.name}?`)) {
       deleteDishMutation.mutate(id);
-      toast({ 
+      toast({
         description: `${dish?.name} deleted`,
         variant: "destructive"
       });
@@ -141,13 +207,11 @@ export default function ManageDishes() {
   };
 
   const categories = useMemo(() => {
-    const categoryMap = new Map<string, number>();
+    const categoryMap = new Map();
     categoryMap.set('All Dishes', dishes.length);
-    
     dishes.forEach(dish => {
       categoryMap.set(dish.category, (categoryMap.get(dish.category) || 0) + 1);
     });
-    
     return Array.from(categoryMap.entries()).map(([name, count]) => ({ name, count }));
   }, [dishes]);
 
@@ -160,47 +224,49 @@ export default function ManageDishes() {
   }, [dishes, selectedCategory, searchQuery]);
 
   if (isLoading) {
-    return <div className="flex items-center justify-center h-full">Loading...</div>;
+    return <div className="p-8">Loading...</div>;
   }
 
   return (
-    <div className="flex gap-6 p-6 h-full overflow-hidden">
-      <div className="w-64 space-y-2">
-        <h2 className="font-semibold mb-4">Dishes Category</h2>
-        {categories.map((cat) => (
-          <button
-            key={cat.name}
-            onClick={() => setSelectedCategory(cat.name)}
-            className={`w-full text-left px-4 py-2 rounded-xl flex items-center justify-between hover-elevate active-elevate-2 ${
-              selectedCategory === cat.name ? 'bg-primary text-primary-foreground' : ''
-            }`}
-            data-testid={`category-${cat.name.toLowerCase().replace(/\s+/g, '-')}`}
-          >
-            <span>{cat.name}</span>
-            <Badge variant={selectedCategory === cat.name ? "secondary" : "outline"} className="rounded-md">
-              {cat.count}
-            </Badge>
-          </button>
-        ))}
-        <Button className="w-full rounded-xl mt-4" variant="outline" data-testid="button-add-category">
-          <Plus className="w-4 h-4 mr-2" />
+    <div className="flex gap-6 p-6">
+      {/* Sidebar */}
+      <Card className="w-64 p-4 h-fit">
+        <h2 className="font-semibold mb-4">Category</h2>
+        <div className="space-y-2">
+          {categories.map((cat) => (
+            <button
+              key={cat.name}
+              onClick={() => setSelectedCategory(cat.name)}
+              className={`w-full text-left px-4 py-2 rounded-xl flex items-center justify-between hover-elevate active-elevate-2 ${
+                selectedCategory === cat.name
+                  ? 'bg-primary text-primary-foreground'
+                  : ''
+              }`}
+              data-testid={`category-${cat.name.toLowerCase().replace(/\s+/g, '-')}`}
+            >
+              <span>{cat.name}</span>
+              <Badge variant="secondary">{cat.count}</Badge>
+            </button>
+          ))}
+        </div>
+        <button className="w-full mt-4 px-4 py-2 border border-dashed rounded-xl hover-elevate">
           Add New Category
-        </Button>
-      </div>
+        </button>
+      </Card>
 
-      <div className="flex-1 overflow-y-auto space-y-6">
-        <div className="flex items-center justify-between">
+      {/* Main Content */}
+      <div className="flex-1">
+        <div className="flex items-center justify-between mb-6">
           <h1 className="text-2xl font-bold">Manage Dishes</h1>
-          <Button className="rounded-xl" data-testid="button-add-dish">
+          <Button onClick={() => setIsAddDishOpen(true)}>
             <Plus className="w-4 h-4 mr-2" />
             Add New Dish
           </Button>
         </div>
 
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+        <div className="relative mb-6">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
           <Input
-            type="search"
             placeholder="Search dishes..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
@@ -209,74 +275,191 @@ export default function ManageDishes() {
           />
         </div>
 
-        <div>
-          <h2 className="text-lg font-semibold mb-4">
-            {selectedCategory} <Badge variant="secondary" className="ml-2">{filteredDishes.length}</Badge>
-          </h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filteredDishes.map((dish) => (
-              <DishManagementCard
-                key={dish.id}
-                {...dish}
-                image={dish.image || ''}
-                price={parseFloat(dish.price)}
-                onToggleAvailability={handleToggleAvailability}
-                onEdit={handleEdit}
-                onDelete={handleDelete}
-              />
-            ))}
-            <Card className="border-dashed border-2 flex flex-col items-center justify-center p-8 hover-elevate active-elevate-2 cursor-pointer" data-testid="card-add-new-dish">
-              <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mb-3">
-                <Plus className="w-8 h-8 text-primary" />
-              </div>
-              <p className="font-medium">Add New Dish</p>
-              <p className="text-sm text-muted-foreground">to {selectedCategory}</p>
-            </Card>
-          </div>
+        <div className="mb-4 flex items-center gap-2">
+          <h2 className="text-xl font-semibold">{selectedCategory}</h2>
+          <Badge variant="secondary">{filteredDishes.length}</Badge>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {filteredDishes.map((dish) => (
+            <DishManagementCard
+              key={dish.id}
+              dish={dish}
+              onToggleAvailability={handleToggleAvailability}
+              onEdit={handleEdit}
+              onDelete={handleDelete}
+            />
+          ))}
+          <button
+            onClick={() => setIsAddDishOpen(true)}
+            className="border-2 border-dashed rounded-xl p-8 hover-elevate flex flex-col items-center justify-center gap-2 min-h-[200px]"
+          >
+            <Plus className="w-8 h-8 text-muted-foreground" />
+            <span className="font-medium">Add New Dish</span>
+            <span className="text-sm text-muted-foreground">to {selectedCategory}</span>
+          </button>
         </div>
       </div>
 
+      {/* Add Dish Dialog */}
+      <Dialog open={isAddDishOpen} onOpenChange={setIsAddDishOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Add New Dish</DialogTitle>
+            <DialogDescription>
+              Create a new dish for your menu
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <label className="text-sm font-medium mb-2 block">Name</label>
+              <Input
+                value={newDishData.name}
+                onChange={(e) => setNewDishData({ ...newDishData, name: e.target.value })}
+                placeholder="Dish name"
+              />
+            </div>
+
+            <div>
+              <label className="text-sm font-medium mb-2 block">Price</label>
+              <Input
+                type="number"
+                step="0.01"
+                value={newDishData.price}
+                onChange={(e) => setNewDishData({ ...newDishData, price: e.target.value })}
+                placeholder="0.00"
+              />
+            </div>
+
+            <div>
+              <label className="text-sm font-medium mb-2 block">Category</label>
+              <Input
+                value={newDishData.category}
+                onChange={(e) => setNewDishData({ ...newDishData, category: e.target.value })}
+                placeholder="e.g., Curry, Biryani, Desserts"
+              />
+            </div>
+
+            <div>
+              <label className="text-sm font-medium mb-2 block">Dish Image</label>
+              {newDishData.image ? (
+                <div className="relative">
+                  <img 
+                    src={newDishData.image} 
+                    alt="Dish preview" 
+                    className="w-full h-48 object-cover rounded-lg"
+                  />
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    size="sm"
+                    className="absolute top-2 right-2"
+                    onClick={handleRemoveImage}
+                  >
+                    <X className="w-4 h-4" />
+                  </Button>
+                </div>
+              ) : (
+                <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-gray-400 transition-colors">
+                  <input
+                    type="file"
+                    id="dish-image"
+                    accept="image/*"
+                    onChange={handleImageUpload}
+                    className="hidden"
+                  />
+                  <label 
+                    htmlFor="dish-image" 
+                    className="cursor-pointer flex flex-col items-center gap-2"
+                  >
+                    <Upload className="w-8 h-8 text-gray-400" />
+                    <span className="text-sm text-gray-600">
+                      Click to upload image
+                    </span>
+                    <span className="text-xs text-gray-500">
+                      PNG, JPG up to 5MB
+                    </span>
+                  </label>
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="veg"
+                checked={newDishData.veg}
+                onChange={(e) => setNewDishData({ ...newDishData, veg: e.target.checked })}
+                className="rounded"
+              />
+              <label htmlFor="veg" className="text-sm">Vegetarian</label>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="available"
+                checked={newDishData.available}
+                onChange={(e) => setNewDishData({ ...newDishData, available: e.target.checked })}
+                className="rounded"
+              />
+              <label htmlFor="available" className="text-sm">Available</label>
+            </div>
+
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setIsAddDishOpen(false)}>
+                Cancel
+              </Button>
+              <Button onClick={handleCreateDish} disabled={createDishMutation.isPending}>
+                {createDishMutation.isPending ? "Adding..." : "Add Dish"}
+              </Button>
+            </DialogFooter>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Ingredients Dialog */}
       <Dialog open={!!editingDishId} onOpenChange={(open) => !open && setEditingDishId(null)}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>
-              Edit Ingredients - {dishes.find(d => d.id === editingDishId)?.name}
-            </DialogTitle>
+            <DialogTitle>Edit Ingredients - {dishes.find(d => d.id === editingDishId)?.name}</DialogTitle>
             <DialogDescription>
               Add or remove ingredients for this dish. When an order is placed, these ingredients will be deducted from inventory.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <h3 className="font-semibold">Current Ingredients</h3>
+
+          <div className="space-y-4">
+            <div>
+              <h3 className="font-semibold mb-3">Current Ingredients</h3>
               {dishIngredients.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No ingredients added yet</p>
+                <div className="text-center py-8 text-muted-foreground border rounded-lg">
+                  No ingredients added yet
+                </div>
               ) : (
                 <div className="space-y-2">
                   {dishIngredients.map((di) => (
-                    <Card key={di.id} className="p-3">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="font-medium">{di.ingredient.name}</p>
-                          <p className="text-sm text-muted-foreground">
-                            {parseFloat(di.quantity).toFixed(2)} {di.ingredient.unit}
-                          </p>
-                        </div>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleRemoveIngredient(di.id)}
-                        >
-                          <Trash2 className="w-4 h-4 text-destructive" />
-                        </Button>
+                    <div key={di.id} className="flex items-center justify-between p-3 border rounded-lg">
+                      <div>
+                        <span className="font-medium">{di.ingredient.name}</span>
+                        <span className="text-sm text-muted-foreground ml-2">
+                          {parseFloat(di.quantity).toFixed(2)} {di.ingredient.unit}
+                        </span>
                       </div>
-                    </Card>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleRemoveIngredient(di.id)}
+                      >
+                        <Trash2 className="w-4 h-4 text-destructive" />
+                      </Button>
+                    </div>
                   ))}
                 </div>
               )}
             </div>
-            <div className="space-y-2 pt-4 border-t">
-              <h3 className="font-semibold">Add New Ingredient</h3>
+
+            <div>
+              <h3 className="font-semibold mb-3">Add New Ingredient</h3>
               <div className="flex gap-2">
                 <Select value={newIngredientId} onValueChange={setNewIngredientId}>
                   <SelectTrigger className="flex-1">
@@ -304,16 +487,14 @@ export default function ManageDishes() {
                   onClick={handleAddIngredient}
                   disabled={!newIngredientId || !newIngredientQuantity || addIngredientMutation.isPending}
                 >
-                  <Plus className="w-4 h-4 mr-2" />
                   Add
                 </Button>
               </div>
             </div>
           </div>
+
           <DialogFooter>
-            <Button variant="outline" onClick={() => setEditingDishId(null)}>
-              Close
-            </Button>
+            <Button onClick={() => setEditingDishId(null)}>Close</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

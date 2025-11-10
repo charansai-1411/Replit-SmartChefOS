@@ -13,16 +13,16 @@ import {
   type InsertIngredient,
   type DishIngredient,
   type InsertDishIngredient,
-  dishes,
-  orders,
-  orderItems,
-  customers,
-  tables,
-  ingredients,
-  dishIngredients
+  COLLECTIONS
 } from "@shared/schema";
-import { db } from "./db";
-import { eq, desc, asc, sql, gte, and } from "drizzle-orm";
+import { initializeFirebase } from "./firebase";
+
+const db = initializeFirebase();
+
+// Helper function to generate unique IDs
+function generateId(): string {
+  return Date.now().toString(36) + Math.random().toString(36).substr(2);
+}
 
 export interface IStorage {
   // Dishes
@@ -85,223 +85,406 @@ export interface IStorage {
 export class DatabaseStorage implements IStorage {
   // Dishes
   async getAllDishes(): Promise<Dish[]> {
-    return await db.select().from(dishes);
+    const snapshot = await db.ref(COLLECTIONS.DISHES).once('value');
+    const data = snapshot.val();
+    if (!data) return [];
+    return Object.entries(data).map(([id, dish]: [string, any]) => ({ id, ...dish }));
   }
 
   async getDish(id: string): Promise<Dish | undefined> {
-    const result = await db.select().from(dishes).where(eq(dishes.id, id));
-    return result[0];
+    const snapshot = await db.ref(`${COLLECTIONS.DISHES}/${id}`).once('value');
+    const data = snapshot.val();
+    if (!data) return undefined;
+    return { id, ...data };
   }
 
   async createDish(dish: InsertDish): Promise<Dish> {
-    const result = await db.insert(dishes).values(dish).returning();
-    return result[0];
+    const id = generateId();
+    await db.ref(`${COLLECTIONS.DISHES}/${id}`).set(dish);
+    return { id, ...dish };
   }
 
   async updateDish(id: string, dish: Partial<InsertDish>): Promise<Dish | undefined> {
-    const result = await db.update(dishes).set(dish).where(eq(dishes.id, id)).returning();
-    return result[0];
+    const existing = await this.getDish(id);
+    if (!existing) return undefined;
+    await db.ref(`${COLLECTIONS.DISHES}/${id}`).update(dish);
+    return { ...existing, ...dish };
   }
 
   async deleteDish(id: string): Promise<void> {
-    await db.delete(dishes).where(eq(dishes.id, id));
+    await db.ref(`${COLLECTIONS.DISHES}/${id}`).remove();
   }
 
   // Orders
   async getAllOrders(): Promise<Order[]> {
-    return await db.select().from(orders).orderBy(desc(orders.createdAt));
+    const snapshot = await db.ref(COLLECTIONS.ORDERS).orderByChild('createdAt').once('value');
+    const data = snapshot.val();
+    if (!data) return [];
+    return Object.entries(data)
+      .map(([id, order]: [string, any]) => ({
+        id,
+        ...order,
+        createdAt: new Date(order.createdAt),
+      }))
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
   }
 
   async getOrder(id: string): Promise<Order | undefined> {
-    const result = await db.select().from(orders).where(eq(orders.id, id));
-    return result[0];
+    const snapshot = await db.ref(`${COLLECTIONS.ORDERS}/${id}`).once('value');
+    const data = snapshot.val();
+    if (!data) return undefined;
+    return {
+      id,
+      ...data,
+      createdAt: new Date(data.createdAt),
+    };
   }
 
   async createOrder(order: InsertOrder): Promise<Order> {
-    const result = await db.insert(orders).values(order).returning();
-    return result[0];
+    const id = generateId();
+    const orderData = {
+      customerId: order.customerId ?? null,
+      tableNumber: order.tableNumber ?? null,
+      guests: order.guests,
+      type: order.type,
+      status: order.status,
+      kitchenStatus: order.kitchenStatus,
+      total: order.total,
+      createdAt: new Date().toISOString(),
+    };
+    await db.ref(`${COLLECTIONS.ORDERS}/${id}`).set(orderData);
+    return {
+      id,
+      ...orderData,
+      createdAt: new Date(orderData.createdAt),
+    };
   }
 
   async updateOrderStatus(id: string, status: string): Promise<Order | undefined> {
-    const result = await db.update(orders).set({ status }).where(eq(orders.id, id)).returning();
-    return result[0];
+    const existing = await this.getOrder(id);
+    if (!existing) return undefined;
+    await db.ref(`${COLLECTIONS.ORDERS}/${id}`).update({ status });
+    return { ...existing, status };
   }
 
   // Order Items
   async getOrderItems(orderId: string): Promise<OrderItem[]> {
-    return await db.select().from(orderItems).where(eq(orderItems.orderId, orderId));
+    const snapshot = await db.ref(COLLECTIONS.ORDER_ITEMS).orderByChild('orderId').equalTo(orderId).once('value');
+    const data = snapshot.val();
+    if (!data) return [];
+    return Object.entries(data).map(([id, item]: [string, any]) => ({ id, ...item }));
   }
 
   async createOrderItem(item: InsertOrderItem): Promise<OrderItem> {
-    const result = await db.insert(orderItems).values(item).returning();
-    return result[0];
+    const id = generateId();
+    const itemData = {
+      orderId: item.orderId,
+      dishId: item.dishId,
+      quantity: item.quantity,
+      price: item.price,
+      notes: item.notes ?? null,
+    };
+    await db.ref(`${COLLECTIONS.ORDER_ITEMS}/${id}`).set(itemData);
+    return { id, ...itemData };
   }
 
   // Customers
   async getAllCustomers(): Promise<Customer[]> {
-    return await db.select().from(customers).orderBy(desc(customers.lastVisit));
+    const snapshot = await db.ref(COLLECTIONS.CUSTOMERS).once('value');
+    const data = snapshot.val();
+    if (!data) return [];
+    return Object.entries(data)
+      .map(([id, customer]: [string, any]) => ({
+        id,
+        ...customer,
+        lastVisit: customer.lastVisit ? new Date(customer.lastVisit) : null,
+      }))
+      .sort((a, b) => {
+        if (!a.lastVisit) return 1;
+        if (!b.lastVisit) return -1;
+        return b.lastVisit.getTime() - a.lastVisit.getTime();
+      });
   }
 
   async getCustomer(id: string): Promise<Customer | undefined> {
-    const result = await db.select().from(customers).where(eq(customers.id, id));
-    return result[0];
+    const snapshot = await db.ref(`${COLLECTIONS.CUSTOMERS}/${id}`).once('value');
+    const data = snapshot.val();
+    if (!data) return undefined;
+    return {
+      id,
+      ...data,
+      lastVisit: data.lastVisit ? new Date(data.lastVisit) : null,
+    };
   }
 
   async createCustomer(customer: InsertCustomer): Promise<Customer> {
-    const result = await db.insert(customers).values(customer).returning();
-    return result[0];
+    const id = generateId();
+    const customerData = {
+      ...customer,
+      lastVisit: customer.lastVisit ? customer.lastVisit.toISOString() : null,
+    };
+    await db.ref(`${COLLECTIONS.CUSTOMERS}/${id}`).set(customerData);
+    return {
+      id,
+      ...customerData,
+      lastVisit: customerData.lastVisit ? new Date(customerData.lastVisit) : null,
+    };
   }
 
   async updateCustomer(id: string, customer: Partial<InsertCustomer>): Promise<Customer | undefined> {
-    const result = await db.update(customers).set(customer).where(eq(customers.id, id)).returning();
-    return result[0];
+    const existing = await this.getCustomer(id);
+    if (!existing) return undefined;
+    const updateData: any = { ...customer };
+    if (customer.lastVisit) {
+      updateData.lastVisit = customer.lastVisit.toISOString();
+    }
+    await db.ref(`${COLLECTIONS.CUSTOMERS}/${id}`).update(updateData);
+    return {
+      ...existing,
+      ...customer,
+    };
   }
 
   // Tables
   async getAllTables(): Promise<Table[]> {
-    return await db.select().from(tables).orderBy(asc(tables.section), asc(tables.number));
+    const snapshot = await db.ref(COLLECTIONS.TABLES).once('value');
+    const data = snapshot.val();
+    if (!data) return [];
+    return Object.entries(data)
+      .map(([id, table]: [string, any]) => ({
+        id,
+        ...table,
+        createdAt: new Date(table.createdAt),
+      }))
+      .sort((a, b) => {
+        if (a.section !== b.section) return a.section.localeCompare(b.section);
+        return a.number.localeCompare(b.number);
+      });
   }
 
   async getTable(id: string): Promise<Table | undefined> {
-    const result = await db.select().from(tables).where(eq(tables.id, id));
-    return result[0];
+    const snapshot = await db.ref(`${COLLECTIONS.TABLES}/${id}`).once('value');
+    const data = snapshot.val();
+    if (!data) return undefined;
+    return {
+      id,
+      ...data,
+      createdAt: new Date(data.createdAt),
+    };
   }
 
   async createTable(table: InsertTable): Promise<Table> {
     // Check for duplicate table number in the same section
-    const existing = await db
-      .select()
-      .from(tables)
-      .where(and(eq(tables.number, table.number), eq(tables.section, table.section)));
-    
-    if (existing.length > 0) {
+    const allTables = await this.getAllTables();
+    const existing = allTables.find(t => t.number === table.number && t.section === table.section);
+    if (existing) {
       throw new Error(`Table ${table.number} already exists in ${table.section} section`);
     }
     
-    const result = await db.insert(tables).values(table).returning();
-    return result[0];
+    const id = generateId();
+    const tableData = {
+      ...table,
+      createdAt: new Date().toISOString(),
+    };
+    await db.ref(`${COLLECTIONS.TABLES}/${id}`).set(tableData);
+    return {
+      id,
+      ...tableData,
+      createdAt: new Date(tableData.createdAt),
+    };
   }
 
   async updateTable(id: string, table: Partial<InsertTable>): Promise<Table | undefined> {
+    const existing = await this.getTable(id);
+    if (!existing) return undefined;
+    
     // Check for duplicate table number in the same section (excluding current table)
     if (table.number || table.section) {
-      const currentTable = await this.getTable(id);
-      if (!currentTable) return undefined;
+      const numberToCheck = table.number || existing.number;
+      const sectionToCheck = table.section || existing.section;
       
-      const numberToCheck = table.number || currentTable.number;
-      const sectionToCheck = table.section || currentTable.section;
+      const allTables = await this.getAllTables();
+      const duplicate = allTables.find(t => 
+        t.id !== id && 
+        t.number === numberToCheck && 
+        t.section === sectionToCheck
+      );
       
-      const existing = await db
-        .select()
-        .from(tables)
-        .where(
-          and(
-            eq(tables.number, numberToCheck),
-            eq(tables.section, sectionToCheck),
-            sql`${tables.id} != ${id}`
-          )
-        );
-      
-      if (existing.length > 0) {
+      if (duplicate) {
         throw new Error(`Table ${numberToCheck} already exists in ${sectionToCheck} section`);
       }
     }
     
-    const result = await db.update(tables).set(table).where(eq(tables.id, id)).returning();
-    return result[0];
+    await db.ref(`${COLLECTIONS.TABLES}/${id}`).update(table);
+    return {
+      ...existing,
+      ...table,
+    };
   }
 
   async deleteTable(id: string): Promise<void> {
-    await db.delete(tables).where(eq(tables.id, id));
+    await db.ref(`${COLLECTIONS.TABLES}/${id}`).remove();
   }
 
   // Analytics
   async getDailySales(): Promise<number> {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
+    const todayISO = today.toISOString();
     
-    const result = await db
-      .select({ total: sql<string>`COALESCE(SUM(${orders.total}), 0)` })
-      .from(orders)
-      .where(gte(orders.createdAt, today));
+    const snapshot = await db.ref(COLLECTIONS.ORDERS).orderByChild('createdAt').startAt(todayISO).once('value');
+    const data = snapshot.val();
+    if (!data) return 0;
     
-    return parseFloat(result[0]?.total || '0');
+    let total = 0;
+    Object.values(data).forEach((order: any) => {
+      total += parseFloat(order.total || '0');
+    });
+    
+    return total;
   }
 
   async getOrderCount(): Promise<number> {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
+    const todayISO = today.toISOString();
     
-    const result = await db
-      .select({ count: sql<string>`COUNT(*)` })
-      .from(orders)
-      .where(gte(orders.createdAt, today));
+    const snapshot = await db.ref(COLLECTIONS.ORDERS).orderByChild('createdAt').startAt(todayISO).once('value');
+    const data = snapshot.val();
+    if (!data) return 0;
     
-    return Number(result[0]?.count ?? 0);
+    return Object.keys(data).length;
   }
 
   async getAverageTicket(): Promise<number> {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
+    const todayISO = today.toISOString();
     
-    const result = await db
-      .select({ avg: sql<string>`COALESCE(AVG(${orders.total}), 0)` })
-      .from(orders)
-      .where(gte(orders.createdAt, today));
+    const snapshot = await db.ref(COLLECTIONS.ORDERS).orderByChild('createdAt').startAt(todayISO).once('value');
+    const data = snapshot.val();
+    if (!data) return 0;
     
-    return parseFloat(result[0]?.avg || '0');
+    const orders = Object.values(data);
+    if (orders.length === 0) return 0;
+    
+    let total = 0;
+    orders.forEach((order: any) => {
+      total += parseFloat(order.total || '0');
+    });
+    
+    return total / orders.length;
   }
 
   async getTopDishes(limit: number = 3): Promise<Array<{ dishId: string; name: string; image: string | null; orders: number }>> {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
+    const todayISO = today.toISOString();
     
-    const result = await db
-      .select({
-        dishId: orderItems.dishId,
-        name: dishes.name,
-        image: dishes.image,
-        orders: sql<string>`COUNT(DISTINCT ${orderItems.orderId})`,
+    // Get today's orders
+    const ordersSnapshot = await db.ref(COLLECTIONS.ORDERS).orderByChild('createdAt').startAt(todayISO).once('value');
+    const ordersData = ordersSnapshot.val();
+    if (!ordersData) return [];
+    
+    const orderIds = Object.keys(ordersData);
+    
+    // Get all order items
+    const itemsSnapshot = await db.ref(COLLECTIONS.ORDER_ITEMS).once('value');
+    const itemsData = itemsSnapshot.val();
+    if (!itemsData) return [];
+    
+    // Count dishes per order
+    const dishCounts = new Map<string, Set<string>>();
+    Object.values(itemsData).forEach((item: any) => {
+      if (orderIds.includes(item.orderId)) {
+        if (!dishCounts.has(item.dishId)) {
+          dishCounts.set(item.dishId, new Set());
+        }
+        dishCounts.get(item.dishId)!.add(item.orderId);
+      }
+    });
+    
+    // Get dish details and sort by count
+    const dishesSnapshot = await db.ref(COLLECTIONS.DISHES).once('value');
+    const dishesData = dishesSnapshot.val();
+    
+    const topDishes = Array.from(dishCounts.entries())
+      .map(([dishId, orderIds]) => {
+        const dish = dishesData?.[dishId];
+        return {
+          dishId,
+          name: dish?.name || 'Unknown',
+          image: dish?.image || null,
+          orders: orderIds.size,
+        };
       })
-      .from(orderItems)
-      .innerJoin(dishes, eq(orderItems.dishId, dishes.id))
-      .innerJoin(orders, eq(orderItems.orderId, orders.id))
-      .where(gte(orders.createdAt, today))
-      .groupBy(orderItems.dishId, dishes.name, dishes.image)
-      .orderBy(sql`COUNT(DISTINCT ${orderItems.orderId}) DESC`)
-      .limit(limit);
+      .sort((a, b) => b.orders - a.orders)
+      .slice(0, limit);
     
-    return result.map(r => ({ ...r, orders: Number(r.orders) }));
+    return topDishes;
   }
 
   // Ingredients
   async getAllIngredients(): Promise<Ingredient[]> {
-    return await db.select().from(ingredients).orderBy(asc(ingredients.name));
+    const snapshot = await db.ref(COLLECTIONS.INGREDIENTS).once('value');
+    const data = snapshot.val();
+    if (!data) return [];
+    return Object.entries(data)
+      .map(([id, ingredient]: [string, any]) => ({
+        id,
+        ...ingredient,
+        createdAt: new Date(ingredient.createdAt),
+        updatedAt: new Date(ingredient.updatedAt),
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name));
   }
 
   async getIngredient(id: string): Promise<Ingredient | undefined> {
-    const result = await db.select().from(ingredients).where(eq(ingredients.id, id));
-    return result[0];
+    const snapshot = await db.ref(`${COLLECTIONS.INGREDIENTS}/${id}`).once('value');
+    const data = snapshot.val();
+    if (!data) return undefined;
+    return {
+      id,
+      ...data,
+      createdAt: new Date(data.createdAt),
+      updatedAt: new Date(data.updatedAt),
+    };
   }
 
   async createIngredient(ingredient: InsertIngredient): Promise<Ingredient> {
-    const result = await db.insert(ingredients).values({
+    const id = generateId();
+    const now = new Date().toISOString();
+    const ingredientData = {
       ...ingredient,
-      updatedAt: new Date(),
-    }).returning();
-    return result[0];
+      createdAt: now,
+      updatedAt: now,
+    };
+    await db.ref(`${COLLECTIONS.INGREDIENTS}/${id}`).set(ingredientData);
+    return {
+      id,
+      ...ingredientData,
+      createdAt: new Date(now),
+      updatedAt: new Date(now),
+    };
   }
 
   async updateIngredient(id: string, ingredient: Partial<InsertIngredient>): Promise<Ingredient | undefined> {
-    const result = await db.update(ingredients).set({
+    const existing = await this.getIngredient(id);
+    if (!existing) return undefined;
+    const updateData = {
       ...ingredient,
-      updatedAt: new Date(),
-    }).where(eq(ingredients.id, id)).returning();
-    return result[0];
+      updatedAt: new Date().toISOString(),
+    };
+    await db.ref(`${COLLECTIONS.INGREDIENTS}/${id}`).update(updateData);
+    return {
+      ...existing,
+      ...ingredient,
+      updatedAt: new Date(updateData.updatedAt),
+    };
   }
 
   async deleteIngredient(id: string): Promise<void> {
-    await db.delete(ingredients).where(eq(ingredients.id, id));
+    await db.ref(`${COLLECTIONS.INGREDIENTS}/${id}`).remove();
   }
 
   async updateIngredientStock(id: string, quantity: number): Promise<Ingredient | undefined> {
@@ -309,114 +492,115 @@ export class DatabaseStorage implements IStorage {
     if (!ingredient) return undefined;
     
     const newStock = parseFloat(ingredient.currentStock) + quantity;
-    const result = await db.update(ingredients)
-      .set({ 
-        currentStock: newStock.toString(),
-        updatedAt: new Date(),
-      })
-      .where(eq(ingredients.id, id))
-      .returning();
-    return result[0];
+    await db.ref(`${COLLECTIONS.INGREDIENTS}/${id}`).update({
+      currentStock: newStock.toString(),
+      updatedAt: new Date().toISOString(),
+    });
+    
+    return {
+      ...ingredient,
+      currentStock: newStock.toString(),
+      updatedAt: new Date(),
+    };
   }
 
   async getLowStockIngredients(): Promise<Ingredient[]> {
-    return await db.select()
-      .from(ingredients)
-      .where(sql`${ingredients.currentStock} <= ${ingredients.minLevel}`)
-      .orderBy(asc(ingredients.name));
+    const allIngredients = await this.getAllIngredients();
+    return allIngredients.filter(ing => 
+      parseFloat(ing.currentStock) <= parseFloat(ing.minLevel)
+    );
   }
 
   // Dish Ingredients
   async getDishIngredients(dishId: string): Promise<Array<DishIngredient & { ingredient: Ingredient }>> {
-    const result = await db
-      .select({
-        id: dishIngredients.id,
-        dishId: dishIngredients.dishId,
-        ingredientId: dishIngredients.ingredientId,
-        quantity: dishIngredients.quantity,
-        createdAt: dishIngredients.createdAt,
-        ingredient: ingredients,
-      })
-      .from(dishIngredients)
-      .innerJoin(ingredients, eq(dishIngredients.ingredientId, ingredients.id))
-      .where(eq(dishIngredients.dishId, dishId));
+    const snapshot = await db.ref(COLLECTIONS.DISH_INGREDIENTS).orderByChild('dishId').equalTo(dishId).once('value');
+    const data = snapshot.val();
+    if (!data) return [];
     
-    return result.map(r => ({
-      id: r.id,
-      dishId: r.dishId,
-      ingredientId: r.ingredientId,
-      quantity: r.quantity,
-      createdAt: r.createdAt,
-      ingredient: r.ingredient,
-    }));
+    const results = await Promise.all(
+      Object.entries(data).map(async ([id, dishIngredient]: [string, any]) => {
+        const ingredient = await this.getIngredient(dishIngredient.ingredientId);
+        return {
+          id,
+          ...dishIngredient,
+          createdAt: new Date(dishIngredient.createdAt),
+          ingredient: ingredient!,
+        };
+      })
+    );
+    
+    return results.filter(r => r.ingredient);
   }
 
   async addDishIngredient(dishIngredient: InsertDishIngredient): Promise<DishIngredient> {
-    const result = await db.insert(dishIngredients).values(dishIngredient).returning();
-    return result[0];
+    const id = generateId();
+    const dishIngredientData = {
+      ...dishIngredient,
+      createdAt: new Date().toISOString(),
+    };
+    await db.ref(`${COLLECTIONS.DISH_INGREDIENTS}/${id}`).set(dishIngredientData);
+    return {
+      id,
+      ...dishIngredientData,
+      createdAt: new Date(dishIngredientData.createdAt),
+    };
   }
 
   async removeDishIngredient(id: string): Promise<void> {
-    await db.delete(dishIngredients).where(eq(dishIngredients.id, id));
+    await db.ref(`${COLLECTIONS.DISH_INGREDIENTS}/${id}`).remove();
   }
 
   async updateDishIngredient(id: string, dishIngredient: Partial<InsertDishIngredient>): Promise<DishIngredient | undefined> {
-    const result = await db.update(dishIngredients)
-      .set(dishIngredient)
-      .where(eq(dishIngredients.id, id))
-      .returning();
-    return result[0];
+    const snapshot = await db.ref(`${COLLECTIONS.DISH_INGREDIENTS}/${id}`).once('value');
+    const existing = snapshot.val();
+    if (!existing) return undefined;
+    
+    await db.ref(`${COLLECTIONS.DISH_INGREDIENTS}/${id}`).update(dishIngredient);
+    return {
+      id,
+      ...existing,
+      ...dishIngredient,
+      createdAt: new Date(existing.createdAt),
+    };
   }
 
   // Orders - Kitchen
   async getActiveOrders(): Promise<Order[]> {
-    return await db.select()
-      .from(orders)
-      .where(sql`${orders.status} IN ('pending', 'confirmed', 'preparing')`)
-      .orderBy(desc(orders.createdAt));
+    const allOrders = await this.getAllOrders();
+    return allOrders.filter(order => 
+      ['pending', 'confirmed', 'preparing'].includes(order.status)
+    );
   }
 
   async updateOrderKitchenStatus(id: string, kitchenStatus: string): Promise<Order | undefined> {
-    const result = await db.update(orders)
-      .set({ kitchenStatus })
-      .where(eq(orders.id, id))
-      .returning();
-    return result[0];
+    const existing = await this.getOrder(id);
+    if (!existing) return undefined;
+    await db.ref(`${COLLECTIONS.ORDERS}/${id}`).update({ kitchenStatus });
+    return { ...existing, kitchenStatus };
   }
 
   async getKOTOrders(): Promise<Array<Order & { items: Array<OrderItem & { dish: Dish }> }>> {
-    const kotOrders = await db.select()
-      .from(orders)
-      .where(sql`${orders.kitchenStatus} IN ('sent', 'preparing')`)
-      .orderBy(desc(orders.createdAt));
+    const allOrders = await this.getAllOrders();
+    const kotOrders = allOrders.filter(order => 
+      ['sent', 'preparing'].includes(order.kitchenStatus)
+    );
     
     const ordersWithItems = await Promise.all(
       kotOrders.map(async (order) => {
-        const items = await db
-          .select({
-            id: orderItems.id,
-            orderId: orderItems.orderId,
-            dishId: orderItems.dishId,
-            quantity: orderItems.quantity,
-            price: orderItems.price,
-            notes: orderItems.notes,
-            dish: dishes,
+        const items = await this.getOrderItems(order.id);
+        const itemsWithDishes = await Promise.all(
+          items.map(async (item) => {
+            const dish = await this.getDish(item.dishId);
+            return {
+              ...item,
+              dish: dish!,
+            };
           })
-          .from(orderItems)
-          .innerJoin(dishes, eq(orderItems.dishId, dishes.id))
-          .where(eq(orderItems.orderId, order.id));
+        );
         
         return {
           ...order,
-          items: items.map(item => ({
-            id: item.id,
-            orderId: item.orderId,
-            dishId: item.dishId,
-            quantity: item.quantity,
-            price: item.price,
-            notes: item.notes,
-            dish: item.dish,
-          })),
+          items: itemsWithDishes.filter(item => item.dish),
         };
       })
     );

@@ -4,33 +4,24 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Edit, Trash2 } from "lucide-react";
 import { useState } from "react";
+import type { Dish } from "@shared/schema";
 
 interface DishManagementCardProps {
-  id: string;
-  name: string;
-  price: number;
-  category: string;
-  image: string;
-  veg: boolean;
-  available?: boolean;
+  dish: Dish;
   onToggleAvailability?: (id: string, available: boolean) => void;
   onEdit?: (id: string) => void;
   onDelete?: (id: string) => void;
 }
 
 export function DishManagementCard({ 
-  id, 
-  name, 
-  price, 
-  category, 
-  image, 
-  veg, 
-  available = true,
+  dish,
   onToggleAvailability,
   onEdit,
   onDelete 
 }: DishManagementCardProps) {
-  const [isAvailable, setIsAvailable] = useState(available);
+  const [isAvailable, setIsAvailable] = useState(dish.available);
+  
+  const { id, name, price, category, image, veg } = dish;
 
   const handleToggle = (checked: boolean) => {
     setIsAvailable(checked);
@@ -41,7 +32,7 @@ export function DishManagementCard({
     <Card className="overflow-hidden hover-elevate" data-testid={`card-manage-dish-${id}`}>
       <div className="aspect-square relative overflow-hidden bg-muted">
         <img 
-          src={image} 
+          src={image || '/placeholder-dish.png'} 
           alt={name}
           className="w-full h-full object-cover"
         />
@@ -59,7 +50,7 @@ export function DishManagementCard({
               {category}
             </Badge>
             <h3 className="font-semibold text-sm" data-testid={`text-manage-dish-name-${id}`}>{name}</h3>
-            <p className="text-lg font-bold tabular-nums mt-1" data-testid={`text-manage-price-${id}`}>₹{price.toFixed(2)}</p>
+            <p className="text-lg font-bold tabular-nums mt-1" data-testid={`text-manage-price-${id}`}>₹{parseFloat(price).toFixed(2)}</p>
           </div>
         </div>
 

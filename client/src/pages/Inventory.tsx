@@ -113,8 +113,8 @@ export default function Inventory() {
     e.preventDefault();
     const data = {
       ...formData,
-      currentStock: parseFloat(formData.currentStock),
-      minLevel: parseFloat(formData.minLevel),
+      currentStock: formData.currentStock,
+      minLevel: formData.minLevel,
     };
 
     if (editingIngredient) {
