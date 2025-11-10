@@ -1,0 +1,61 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+
+    "users": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && auth.uid === $uid"
+      }
+    },
+
+    "restaurants": {
+      "$rid": {
+        ".read": "auth != null && auth.token.restaurantId === $rid",
+        ".write": "auth != null && auth.token.restaurantId === $rid && (auth.token.role === 'admin' || auth.token.role === 'manager')"
+      }
+    },
+
+    "branches": {
+      "$rid": {
+        "$bid": {
+          ".read": "auth != null && auth.token.restaurantId === $rid",
+          ".write": "auth != null && auth.token.restaurantId === $rid && (auth.token.role === 'admin' || auth.token.role === 'manager')"
+        }
+      }
+    },
+
+    "restaurantUsers": {
+      "$rid": {
+        "$uid2": {
+          ".read": "auth != null && auth.token.restaurantId === $rid",
+          ".write": "auth != null && auth.token.restaurantId === $rid && auth.token.role === 'admin'"
+        }
+      }
+    },
+
+    "invites": {
+      "$rid": {
+        "$token": {
+          ".read": "false",
+          ".write": "auth != null && auth.token.restaurantId === $rid && auth.token.role === 'admin'"
+        }
+      }
+    },
+
+    "phonesToUid": {
+      "$phone": {
+        ".read": "false",
+        ".write": "auth != null && auth.uid === newData.val()"
+      }
+    },
+
+    "slugs": {
+      "$slug": {
+        ".read": "false",
+        ".write": "auth != null && !data.exists()"
+      }
+    }
+  }
+}

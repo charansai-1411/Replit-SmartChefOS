@@ -7,8 +7,17 @@ vite.config.ts.*
 
 # Environment variables
 
-.env.local
-.env.*.local
+
 
 # Data exports
 data-export.json
+
+# Firebase
+serviceAccountKey.json
+.firebase/
+firebase-debug.log
+firestore-debug.log
+database-debug.log
+ui-debug.log
+functions/lib/
+functions/node_modules/
