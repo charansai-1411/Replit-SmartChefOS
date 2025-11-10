@@ -34,7 +34,7 @@ function ProtectedLayout({ children }: { children: React.ReactNode }) {
           <AppSidebar />
           <div className="flex flex-col flex-1 overflow-hidden">
             <Topbar />
-            <main className="flex-1 overflow-hidden bg-background">
+            <main className="flex-1 overflow-auto custom-scrollbar bg-background">
               {children}
             </main>
           </div>
