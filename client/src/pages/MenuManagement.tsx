@@ -1,4 +1,7 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import type { Dish } from "@shared/schema";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -51,6 +54,9 @@ import {
   Search,
   Filter,
   MoreVertical,
+  Upload,
+  X,
+  Image as ImageIcon,
 } from "lucide-react";
 
 type MenuPlatform = "restaurant" | "zomato" | "swiggy" | "other";
@@ -75,6 +81,11 @@ interface MenuItem {
   servingInfo?: string;
   preparationTime?: number;
   platforms: MenuPlatform[];
+  // Platform-specific availability
+  availableOnRestaurant?: boolean;
+  availableOnZomato?: boolean;
+  availableOnSwiggy?: boolean;
+  availableOnOther?: boolean;
 }
 
 interface ItemVariant {
@@ -216,6 +227,10 @@ export default function MenuManagement() {
       gst: 5,
       preparationTime: 15,
       platforms: ["restaurant", "zomato", "swiggy"],
+      availableOnRestaurant: true,
+      availableOnZomato: true,
+      availableOnSwiggy: true,
+      availableOnOther: false,
       variants: [
         { id: "v1", name: "Half", price: 250, isAvailable: true },
         { id: "v2", name: "Full", price: 450, isAvailable: true },
@@ -245,6 +260,10 @@ export default function MenuManagement() {
       gst: 5,
       preparationTime: 20,
       platforms: ["restaurant", "zomato", "swiggy"],
+      availableOnRestaurant: true,
+      availableOnZomato: true,
+      availableOnSwiggy: true,
+      availableOnOther: false,
     },
     {
       id: "3",
@@ -259,6 +278,10 @@ export default function MenuManagement() {
       gst: 5,
       preparationTime: 25,
       platforms: ["restaurant", "zomato"],
+      availableOnRestaurant: true,
+      availableOnZomato: true,
+      availableOnSwiggy: false,
+      availableOnOther: false,
       variants: [
         { id: "v3", name: "Half", price: 380, isAvailable: true },
         { id: "v4", name: "Full", price: 650, isAvailable: true },
@@ -277,6 +300,10 @@ export default function MenuManagement() {
       gst: 5,
       preparationTime: 30,
       platforms: ["restaurant", "zomato", "swiggy", "other"],
+      availableOnRestaurant: true,
+      availableOnZomato: true,
+      availableOnSwiggy: true,
+      availableOnOther: true,
     },
   ]);
 
@@ -305,13 +332,31 @@ export default function MenuManagement() {
     tags: [],
     gst: 5,
     platforms: [activePlatform],
+    image: "",
+    availableOnRestaurant: true,
+    availableOnZomato: true,
+    availableOnSwiggy: true,
+    availableOnOther: true,
   });
+
+  // Image preview states
+  const [newItemImagePreview, setNewItemImagePreview] = useState<string>("");
+  const [editItemImagePreview, setEditItemImagePreview] = useState<string>("");
 
   const [newCategory, setNewCategory] = useState({
     name: "",
     description: "",
     subCategories: [""],
   });
+
+  // Initialize image preview when editing item
+  useEffect(() => {
+    if (editingItem?.image) {
+      setEditItemImagePreview(editingItem.image);
+    } else {
+      setEditItemImagePreview("");
+    }
+  }, [editingItem]);
 
   const handleAddItem = () => {
     // Validation
@@ -345,6 +390,11 @@ export default function MenuManagement() {
       tags: newItem.tags || [],
       gst: newItem.gst || 5,
       platforms: newItem.platforms || ["restaurant"],
+      image: newItem.image,
+      availableOnRestaurant: newItem.availableOnRestaurant ?? true,
+      availableOnZomato: newItem.availableOnZomato ?? true,
+      availableOnSwiggy: newItem.availableOnSwiggy ?? true,
+      availableOnOther: newItem.availableOnOther ?? true,
     };
 
     setMenuItems([...menuItems, item]);
@@ -360,7 +410,13 @@ export default function MenuManagement() {
       tags: [],
       gst: 5,
       platforms: ["restaurant"],
+      image: "",
+      availableOnRestaurant: true,
+      availableOnZomato: true,
+      availableOnSwiggy: true,
+      availableOnOther: true,
     });
+    setNewItemImagePreview("");
 
     toast({
       title: "Item Added",
@@ -396,10 +452,49 @@ export default function MenuManagement() {
     ));
 
     setEditingItem(null);
+    setEditItemImagePreview("");
     toast({
       title: "Item Updated",
       description: `${editingItem.name} has been updated successfully.`,
     });
+  };
+
+  // Image handling functions
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>, isEdit: boolean = false) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 5 * 1024 * 1024) {
+        toast({
+          title: "File Too Large",
+          description: "Please select an image smaller than 5MB.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const base64String = reader.result as string;
+        if (isEdit && editingItem) {
+          setEditingItem({ ...editingItem, image: base64String });
+          setEditItemImagePreview(base64String);
+        } else {
+          setNewItem({ ...newItem, image: base64String });
+          setNewItemImagePreview(base64String);
+        }
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const removeImage = (isEdit: boolean = false) => {
+    if (isEdit && editingItem) {
+      setEditingItem({ ...editingItem, image: "" });
+      setEditItemImagePreview("");
+    } else {
+      setNewItem({ ...newItem, image: "" });
+      setNewItemImagePreview("");
+    }
   };
 
   const handleAddCategory = () => {
@@ -492,6 +587,38 @@ export default function MenuManagement() {
     setMenuItems(menuItems.map(item =>
       item.id === id ? { ...item, isAvailable: !item.isAvailable } : item
     ));
+  };
+
+  // Platform-specific availability toggle
+  const handleTogglePlatformAvailability = (id: string, platform: MenuPlatform) => {
+    setMenuItems(menuItems.map(item => {
+      if (item.id === id) {
+        const updates: Partial<MenuItem> = {};
+        
+        switch (platform) {
+          case "restaurant":
+            updates.availableOnRestaurant = !item.availableOnRestaurant;
+            break;
+          case "zomato":
+            updates.availableOnZomato = !item.availableOnZomato;
+            break;
+          case "swiggy":
+            updates.availableOnSwiggy = !item.availableOnSwiggy;
+            break;
+          case "other":
+            updates.availableOnOther = !item.availableOnOther;
+            break;
+        }
+        
+        return { ...item, ...updates };
+      }
+      return item;
+    }));
+    
+    toast({
+      title: "Availability Updated",
+      description: `Item availability toggled for ${platform}.`,
+    });
   };
 
   const handleCopyToPlatform = (itemId: string, platform: MenuPlatform) => {
@@ -768,6 +895,48 @@ export default function MenuManagement() {
               </SelectContent>
             </Select>
           </div>
+
+          {/* Category Chips */}
+          <div className="flex flex-wrap gap-2 animate-in fade-in slide-in-from-top-2 duration-200">
+            <button
+              onClick={() => setSelectedCategory("all")}
+              className={`px-4 py-2 rounded-full text-sm font-medium transition-all ${
+                selectedCategory === "all"
+                  ? "bg-primary text-primary-foreground shadow-md scale-105"
+                  : "bg-muted hover:bg-muted/80 text-muted-foreground hover:scale-105"
+              }`}
+            >
+              All
+            </button>
+            {categories.map((cat) => {
+              const itemCount = menuItems.filter(
+                (item) => item.category === cat.name && item.platforms.includes(activePlatform)
+              ).length;
+              return (
+                <button
+                  key={cat.id}
+                  onClick={() => setSelectedCategory(cat.name)}
+                  className={`px-4 py-2 rounded-full text-sm font-medium transition-all flex items-center gap-2 ${
+                    selectedCategory === cat.name
+                      ? "bg-primary text-primary-foreground shadow-md scale-105"
+                      : "bg-muted hover:bg-muted/80 text-muted-foreground hover:scale-105"
+                  }`}
+                >
+                  {cat.name}
+                  <Badge
+                    variant="secondary"
+                    className={`ml-1 ${
+                      selectedCategory === cat.name
+                        ? "bg-white/20 text-white border-white/30"
+                        : ""
+                    }`}
+                  >
+                    {itemCount}
+                  </Badge>
+                </button>
+              );
+            })}
+          </div>
           
           {/* Active Filter Indicator */}
           {(selectedCategory !== "all" || searchQuery) && (
@@ -808,9 +977,26 @@ export default function MenuManagement() {
             {filteredItems.map((item, index) => (
               <Card 
                 key={item.id} 
-                className={`${!item.isAvailable ? "opacity-60" : ""} animate-in fade-in slide-in-from-bottom-4 duration-300`}
+                className={`${!item.isAvailable ? "opacity-60" : ""} animate-in fade-in slide-in-from-bottom-4 duration-300 overflow-hidden`}
                 style={{ animationDelay: `${index * 50}ms` }}
               >
+                {/* Item Image */}
+                {item.image && (
+                  <div className="relative w-full aspect-[3/2] overflow-hidden bg-muted">
+                    <img
+                      src={item.image}
+                      alt={item.name}
+                      className="w-full h-full object-cover"
+                    />
+                    <div className="absolute top-2 right-2">
+                      <Switch
+                        checked={item.isAvailable}
+                        onCheckedChange={() => handleToggleAvailability(item.id)}
+                        className="bg-white/90 backdrop-blur-sm"
+                      />
+                    </div>
+                  </div>
+                )}
                 <CardHeader>
                   <div className="flex items-start justify-between">
                     <div className="flex-1">
@@ -828,10 +1014,12 @@ export default function MenuManagement() {
                       </CardTitle>
                       <CardDescription className="mt-1">{item.description}</CardDescription>
                     </div>
-                    <Switch
-                      checked={item.isAvailable}
-                      onCheckedChange={() => handleToggleAvailability(item.id)}
-                    />
+                    {!item.image && (
+                      <Switch
+                        checked={item.isAvailable}
+                        onCheckedChange={() => handleToggleAvailability(item.id)}
+                      />
+                    )}
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-3">
@@ -900,25 +1088,59 @@ export default function MenuManagement() {
                     </Button>
                   </div>
 
-                  {/* Platform badges */}
-                  <div className="flex flex-wrap gap-1">
-                    {(["restaurant", "zomato", "swiggy", "other"] as MenuPlatform[]).map(platform => {
-                      const isActive = item.platforms.includes(platform);
-                      return (
-                        <div
-                          key={platform}
-                          className={`flex items-center gap-1 px-2 py-1 rounded-md text-xs transition-all ${
-                            isActive 
-                              ? `${platformColors[platform].bg} ${platformColors[platform].text}` 
-                              : 'bg-muted text-muted-foreground'
-                          }`}
-                          title={`${isActive ? 'Active' : 'Inactive'} on ${platform}`}
-                        >
-                          {platformIcons[platform]}
-                          {isActive && <span className="text-xs">✓</span>}
-                        </div>
-                      );
-                    })}
+                  {/* Platform availability toggles */}
+                  <div className="space-y-2">
+                    <p className="text-xs font-semibold text-muted-foreground">Platform Availability</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      {(["restaurant", "zomato", "swiggy", "other"] as MenuPlatform[]).map(platform => {
+                        const isOnPlatform = item.platforms.includes(platform);
+                        let isAvailableOnPlatform = true;
+                        
+                        switch (platform) {
+                          case "restaurant":
+                            isAvailableOnPlatform = item.availableOnRestaurant ?? true;
+                            break;
+                          case "zomato":
+                            isAvailableOnPlatform = item.availableOnZomato ?? true;
+                            break;
+                          case "swiggy":
+                            isAvailableOnPlatform = item.availableOnSwiggy ?? true;
+                            break;
+                          case "other":
+                            isAvailableOnPlatform = item.availableOnOther ?? true;
+                            break;
+                        }
+                        
+                        const platformStyle = isOnPlatform && isAvailableOnPlatform
+                          ? platform === 'restaurant' ? 'border-blue-500 bg-blue-50'
+                          : platform === 'zomato' ? 'border-red-500 bg-red-50'
+                          : platform === 'swiggy' ? 'border-orange-500 bg-orange-50'
+                          : 'border-purple-500 bg-purple-50'
+                          : 'border-muted bg-muted/30';
+                        
+                        return (
+                          <div
+                            key={platform}
+                            className={`flex items-center justify-between p-2 border rounded-lg text-xs transition-all ${platformStyle}`}
+                          >
+                            <div className="flex items-center gap-1.5">
+                              {platformIcons[platform]}
+                              <span className="font-medium capitalize">{platform}</span>
+                            </div>
+                            {isOnPlatform && (
+                              <Switch
+                                checked={isAvailableOnPlatform}
+                                onCheckedChange={() => handleTogglePlatformAvailability(item.id, platform)}
+                                className="scale-75"
+                              />
+                            )}
+                            {!isOnPlatform && (
+                              <span className="text-muted-foreground text-[10px]">Not added</span>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
                 </CardContent>
               </Card>
@@ -970,6 +1192,49 @@ export default function MenuManagement() {
                   placeholder="0"
                   className="rounded-xl"
                 />
+              </div>
+            </div>
+
+            {/* Image Upload Section */}
+            <div className="space-y-2">
+              <Label htmlFor="item-image">Item Image</Label>
+              <div className="space-y-3">
+                {newItemImagePreview || newItem.image ? (
+                  <div className="relative w-full aspect-[3/2] rounded-xl overflow-hidden border-2 border-dashed border-muted-foreground/25 bg-muted">
+                    <img
+                      src={newItemImagePreview || newItem.image}
+                      alt="Preview"
+                      className="w-full h-full object-cover"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => removeImage(false)}
+                      className="absolute top-2 right-2 p-2 bg-destructive text-destructive-foreground rounded-full hover:bg-destructive/90 transition-all shadow-lg"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                ) : (
+                  <label
+                    htmlFor="item-image"
+                    className="flex flex-col items-center justify-center w-full aspect-[3/2] border-2 border-dashed border-muted-foreground/25 rounded-xl cursor-pointer hover:border-primary/50 hover:bg-muted/50 transition-all"
+                  >
+                    <div className="flex flex-col items-center justify-center pt-5 pb-6">
+                      <Upload className="w-10 h-10 mb-3 text-muted-foreground" />
+                      <p className="mb-2 text-sm text-muted-foreground">
+                        <span className="font-semibold">Click to upload</span> or drag and drop
+                      </p>
+                      <p className="text-xs text-muted-foreground">PNG, JPG, WEBP (MAX. 5MB)</p>
+                    </div>
+                    <Input
+                      id="item-image"
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(e) => handleImageUpload(e, false)}
+                    />
+                  </label>
+                )}
               </div>
             </div>
 
@@ -1156,6 +1421,57 @@ export default function MenuManagement() {
                       onChange={(e) => setEditingItem({ ...editingItem, price: parseFloat(e.target.value) || 0 })}
                       placeholder="0"
                       className="rounded-xl"
+                    />
+                  </div>
+                </div>
+
+                {/* Image Upload/Edit Section */}
+                <div className="space-y-2">
+                  <Label htmlFor="edit-item-image">Item Image</Label>
+                  <div className="space-y-3">
+                    {editItemImagePreview || editingItem.image ? (
+                      <div className="relative w-full aspect-[3/2] rounded-xl overflow-hidden border-2 border-dashed border-muted-foreground/25 bg-muted">
+                        <img
+                          src={editItemImagePreview || editingItem.image}
+                          alt="Preview"
+                          className="w-full h-full object-cover"
+                        />
+                        <div className="absolute top-2 right-2 flex gap-2">
+                          <label
+                            htmlFor="edit-item-image"
+                            className="p-2 bg-primary text-primary-foreground rounded-full hover:bg-primary/90 transition-all shadow-lg cursor-pointer"
+                          >
+                            <Upload className="w-4 h-4" />
+                          </label>
+                          <button
+                            type="button"
+                            onClick={() => removeImage(true)}
+                            className="p-2 bg-destructive text-destructive-foreground rounded-full hover:bg-destructive/90 transition-all shadow-lg"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <label
+                        htmlFor="edit-item-image"
+                        className="flex flex-col items-center justify-center w-full aspect-[3/2] border-2 border-dashed border-muted-foreground/25 rounded-xl cursor-pointer hover:border-primary/50 hover:bg-muted/50 transition-all"
+                      >
+                        <div className="flex flex-col items-center justify-center pt-5 pb-6">
+                          <ImageIcon className="w-10 h-10 mb-3 text-muted-foreground" />
+                          <p className="mb-2 text-sm text-muted-foreground">
+                            <span className="font-semibold">Click to upload</span> or drag and drop
+                          </p>
+                          <p className="text-xs text-muted-foreground">PNG, JPG, WEBP (MAX. 5MB)</p>
+                        </div>
+                      </label>
+                    )}
+                    <Input
+                      id="edit-item-image"
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(e) => handleImageUpload(e, true)}
                     />
                   </div>
                 </div>
@@ -1406,6 +1722,79 @@ export default function MenuManagement() {
                           onCheckedChange={() => togglePlatformForEditItem(platform)}
                           disabled={isRestaurantDisabled}
                         />
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <Separator />
+
+              {/* Platform-Specific Availability */}
+              <div className="space-y-4">
+                <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Platform-Specific Availability</h3>
+                <p className="text-xs text-muted-foreground">
+                  Control item availability independently for each platform
+                </p>
+                <div className="grid grid-cols-2 gap-3">
+                  {(["restaurant", "zomato", "swiggy", "other"] as MenuPlatform[]).map(platform => {
+                    const isOnPlatform = editingItem.platforms?.includes(platform);
+                    let isAvailableOnPlatform = true;
+                    
+                    switch (platform) {
+                      case "restaurant":
+                        isAvailableOnPlatform = editingItem.availableOnRestaurant ?? true;
+                        break;
+                      case "zomato":
+                        isAvailableOnPlatform = editingItem.availableOnZomato ?? true;
+                        break;
+                      case "swiggy":
+                        isAvailableOnPlatform = editingItem.availableOnSwiggy ?? true;
+                        break;
+                      case "other":
+                        isAvailableOnPlatform = editingItem.availableOnOther ?? true;
+                        break;
+                    }
+                    
+                    return (
+                      <div
+                        key={platform}
+                        className={`flex items-center justify-between p-3 border rounded-xl transition-all ${
+                          isOnPlatform ? 'border-primary bg-primary/5' : 'border-muted bg-muted/30'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2">
+                          {platformIcons[platform]}
+                          <div>
+                            <p className="font-medium capitalize text-sm">{platform}</p>
+                            {!isOnPlatform && (
+                              <p className="text-xs text-muted-foreground">Not on platform</p>
+                            )}
+                          </div>
+                        </div>
+                        {isOnPlatform && (
+                          <Switch
+                            checked={isAvailableOnPlatform}
+                            onCheckedChange={() => {
+                              const updates: Partial<MenuItem> = {};
+                              switch (platform) {
+                                case "restaurant":
+                                  updates.availableOnRestaurant = !isAvailableOnPlatform;
+                                  break;
+                                case "zomato":
+                                  updates.availableOnZomato = !isAvailableOnPlatform;
+                                  break;
+                                case "swiggy":
+                                  updates.availableOnSwiggy = !isAvailableOnPlatform;
+                                  break;
+                                case "other":
+                                  updates.availableOnOther = !isAvailableOnPlatform;
+                                  break;
+                              }
+                              setEditingItem({ ...editingItem, ...updates });
+                            }}
+                          />
+                        )}
                       </div>
                     );
                   })}

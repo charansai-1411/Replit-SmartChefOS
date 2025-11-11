@@ -1,14 +1,14 @@
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Minus, Plus } from "lucide-react";
+import { Minus, Plus, ImageOff } from "lucide-react";
 import { useState } from "react";
 
 interface ItemCardProps {
   id: string;
   name: string;
   price: number;
-  image: string;
+  image: string | null;
   veg: boolean;
   available?: boolean;
   onQuantityChange?: (id: string, quantity: number) => void;
@@ -27,11 +27,17 @@ export function ItemCard({ id, name, price, image, veg, available = true, onQuan
   return (
     <Card className="overflow-hidden hover-elevate active-elevate-2 transition-all" data-testid={`card-dish-${id}`}>
       <div className="aspect-square relative overflow-hidden bg-muted">
-        <img 
-          src={image} 
-          alt={name}
-          className="w-full h-full object-cover"
-        />
+        {image ? (
+          <img 
+            src={image} 
+            alt={name}
+            className="w-full h-full object-cover"
+          />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center bg-muted">
+            <ImageOff className="w-16 h-16 text-muted-foreground/30" />
+          </div>
+        )}
         <div className="absolute top-3 left-3">
           <div className={`w-4 h-4 rounded-full ${available ? 'bg-green-500' : 'bg-red-500'}`} />
         </div>

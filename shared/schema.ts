@@ -9,6 +9,11 @@ export interface Dish {
   veg: boolean;
   image: string | null;
   available: boolean;
+  // Platform-specific availability
+  availableOnRestaurant?: boolean;
+  availableOnZomato?: boolean;
+  availableOnSwiggy?: boolean;
+  availableOnOther?: boolean;
 }
 
 export interface Order {
@@ -88,6 +93,10 @@ export const insertDishSchema = z.object({
   veg: z.boolean().default(true),
   image: z.string().nullable().optional(),
   available: z.boolean().default(true),
+  availableOnRestaurant: z.boolean().optional().default(true),
+  availableOnZomato: z.boolean().optional().default(true),
+  availableOnSwiggy: z.boolean().optional().default(true),
+  availableOnOther: z.boolean().optional().default(true),
 });
 
 export const updateDishSchema = insertDishSchema.partial();
