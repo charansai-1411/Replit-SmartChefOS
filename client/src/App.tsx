@@ -10,13 +10,14 @@ import { AuthProvider, ProtectedRoute } from "@/contexts/AuthContext";
 
 import Dashboard from "@/pages/Dashboard";
 import OrderLine from "@/pages/OrderLine";
-import ManageDishes from "@/pages/ManageDishes";
+import MenuManagement from "@/pages/MenuManagement";
 import Customers from "@/pages/Customers";
 import Tables from "@/pages/Tables";
 import OnlineOrders from "@/pages/OnlineOrders";
 import Inventory from "@/pages/Inventory";
 import Login from "@/pages/Login";
 import Profile from "@/pages/Profile";
+import Settings from "@/pages/Settings";
 import NotFound from "@/pages/not-found";
 
 function ProtectedLayout({ children }: { children: React.ReactNode }) {
@@ -92,7 +93,7 @@ function Router() {
       <Route path="/dishes">
         {() => (
           <ProtectedLayout>
-            <ManageDishes />
+            <MenuManagement />
           </ProtectedLayout>
         )}
       </Route>
@@ -117,6 +118,14 @@ function Router() {
         {() => (
           <ProtectedLayout>
             <Profile />
+          </ProtectedLayout>
+        )}
+      </Route>
+      
+      <Route path="/settings">
+        {() => (
+          <ProtectedLayout>
+            <Settings />
           </ProtectedLayout>
         )}
       </Route>

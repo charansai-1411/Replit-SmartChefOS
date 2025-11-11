@@ -16,7 +16,7 @@ const menuItems = [
   { title: "Tables", url: "/", icon: Table },
   { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
   { title: "Online Orders", url: "/online", icon: Globe },
-  { title: "Manage Dishes", url: "/dishes", icon: UtensilsCrossed },
+  { title: "Menu Management", url: "/dishes", icon: UtensilsCrossed },
   { title: "Inventory", url: "/inventory", icon: Package },
   { title: "Customers", url: "/customers", icon: Users },
 ];
