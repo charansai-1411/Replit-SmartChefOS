@@ -204,6 +204,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.get("/api/orders/table/:tableNumber", requireAuth, async (req, res) => {
+    try {
+      console.log("Fetching orders for table:", req.params.tableNumber, "owner:", req.session.ownerId);
+      const ctx = createStorageContext(req.session.ownerId!);
+      const orders = await ctx.getOrdersByTableNumber(req.params.tableNumber);
+      console.log("Table orders fetched:", orders.length, "orders");
+      res.json(orders);
+    } catch (error) {
+      console.error("Error fetching orders for table:", error);
+      res.status(500).json({ error: "Failed to fetch orders for table" });
+    }
+  });
+
   app.get("/api/orders/:id", requireAuth, async (req, res) => {
     try {
       const ctx = createStorageContext(req.session.ownerId!);

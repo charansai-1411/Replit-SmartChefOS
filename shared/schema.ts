@@ -9,6 +9,14 @@ export interface Dish {
   veg: boolean;
   image: string | null;
   available: boolean;
+  variants?: DishVariant[];
+}
+
+export interface DishVariant {
+  id: string;
+  name: string;
+  price: string;
+  available: boolean;
 }
 
 export interface Order {
@@ -30,6 +38,8 @@ export interface OrderItem {
   quantity: number;
   price: string;
   notes: string | null;
+  variantId?: string | null;
+  variantName?: string | null;
 }
 
 export interface Customer {
@@ -81,6 +91,13 @@ export interface RestaurantOwner {
 }
 
 // Zod Schemas for validation
+export const dishVariantSchema = z.object({
+  id: z.string(),
+  name: z.string().min(1),
+  price: z.string(),
+  available: z.boolean().default(true),
+});
+
 export const insertDishSchema = z.object({
   name: z.string().min(1),
   price: z.string(),
@@ -88,6 +105,7 @@ export const insertDishSchema = z.object({
   veg: z.boolean().default(true),
   image: z.string().nullable().optional(),
   available: z.boolean().default(true),
+  variants: z.array(dishVariantSchema).optional(),
 });
 
 export const updateDishSchema = insertDishSchema.partial();
@@ -108,6 +126,8 @@ export const insertOrderItemSchema = z.object({
   quantity: z.number().min(1),
   price: z.string(),
   notes: z.string().nullable().optional(),
+  variantId: z.string().nullable().optional(),
+  variantName: z.string().nullable().optional(),
 });
 
 export const insertCustomerSchema = z.object({

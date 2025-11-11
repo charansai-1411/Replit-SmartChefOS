@@ -1,10 +1,12 @@
-import { db } from "./db";
-import { dishes, customers, orders, orderItems } from "@shared/schema";
+import { initializeFirebase } from "./firebase";
+import { COLLECTIONS } from "@shared/schema";
 import fs from "fs";
 import path from "path";
 
+const db = initializeFirebase();
+
 async function importData() {
-  console.log("Importing data to database...\n");
+  console.log("Importing data to Firebase Firestore...\n");
 
   try {
     // Read export file
@@ -17,134 +19,108 @@ async function importData() {
     const exportData = JSON.parse(fs.readFileSync(exportPath, "utf-8"));
     console.log(`✓ Loaded export file (exported at: ${exportData.exportedAt})`);
 
+    // Note: This script requires an ownerId to import data
+    // You need to provide the restaurant owner ID
+    const ownerId = process.env.OWNER_ID || exportData.ownerId;
+    
+    if (!ownerId) {
+      throw new Error("OWNER_ID is required. Set it in environment or provide in export file.");
+    }
+
+    console.log(`Importing data for owner: ${ownerId}`);
+
     // Import dishes
     if (exportData.dishes && exportData.dishes.length > 0) {
-      // Remove id to let database generate new ones, or keep existing if you want to preserve IDs
-      const dishesToInsert = exportData.dishes.map((d: any) => ({
-        name: d.name,
-        price: d.price,
-        category: d.category,
-        veg: d.veg,
-        image: d.image,
-        available: d.available,
-      }));
-      await db.insert(dishes).values(dishesToInsert).onConflictDoNothing();
-      console.log(`✓ Imported ${exportData.dishes.length} dishes`);
+      const dishesRef = db.collection(COLLECTIONS.DISHES);
+      let dishCount = 0;
+      
+      for (const dish of exportData.dishes) {
+        const dishData = {
+          name: dish.name,
+          price: dish.price,
+          category: dish.category,
+          veg: dish.veg,
+          image: dish.image,
+          available: dish.available,
+          ownerId: ownerId,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        };
+        
+        await dishesRef.add(dishData);
+        dishCount++;
+      }
+      console.log(`✓ Imported ${dishCount} dishes`);
     }
 
     // Import customers
     if (exportData.customers && exportData.customers.length > 0) {
-      const customersToInsert = exportData.customers.map((c: any) => ({
-        name: c.name,
-        phone: c.phone,
-        lastVisit: c.lastVisit ? new Date(c.lastVisit) : null,
-        lifetimeValue: c.lifetimeValue || "0",
-      }));
-      const insertedCustomers = await db.insert(customers).values(customersToInsert).onConflictDoNothing().returning();
-      console.log(`✓ Imported ${insertedCustomers.length} customers`);
-
-      // Import orders (need to map old customer IDs to new ones)
-      if (exportData.orders && exportData.orders.length > 0) {
-        // Get all customers to map phone numbers to IDs
-        const allCustomers = await db.select().from(customers);
-        const customerMap = new Map(allCustomers.map(c => [c.phone, c.id]));
-
-        const ordersToInsert = exportData.orders.map((o: any) => ({
-          customerId: o.customerId ? customerMap.get(exportData.customers.find((c: any) => c.id === o.customerId)?.phone) || null : null,
-          tableNumber: o.tableNumber,
-          guests: o.guests,
-          type: o.type,
-          status: o.status,
-          total: o.total || "0",
-          createdAt: o.createdAt ? new Date(o.createdAt) : new Date(),
-        }));
-        const insertedOrders = await db.insert(orders).values(ordersToInsert).returning();
-        console.log(`✓ Imported ${insertedOrders.length} orders`);
-
-        // Import order items
-        if (exportData.orderItems && exportData.orderItems.length > 0) {
-          // Map old order IDs to new order IDs
-          const orderMap = new Map();
-          exportData.orders.forEach((oldOrder: any, index: number) => {
-            if (insertedOrders[index]) {
-              orderMap.set(oldOrder.id, insertedOrders[index].id);
-            }
-          });
-
-          // Get all dishes to map names to IDs
-          const allDishes = await db.select().from(dishes);
-          const dishMap = new Map(allDishes.map(d => [d.name, d.id]));
-
-          const orderItemsToInsert = exportData.orderItems
-            .map((oi: any) => {
-              const newOrderId = orderMap.get(oi.orderId);
-              const oldDish = exportData.dishes.find((d: any) => d.id === oi.dishId);
-              const newDishId = oldDish ? dishMap.get(oldDish.name) : null;
-              
-              if (!newOrderId || !newDishId) return null;
-
-              return {
-                orderId: newOrderId,
-                dishId: newDishId,
-                quantity: oi.quantity,
-                price: oi.price,
-                notes: oi.notes || null,
-              };
-            })
-            .filter((oi: any) => oi !== null);
-
-          await db.insert(orderItems).values(orderItemsToInsert);
-          console.log(`✓ Imported ${orderItemsToInsert.length} order items`);
-        }
+      const customersRef = db.collection(COLLECTIONS.CUSTOMERS);
+      let customerCount = 0;
+      
+      for (const customer of exportData.customers) {
+        const customerData = {
+          name: customer.name,
+          phone: customer.phone,
+          lastVisit: customer.lastVisit ? new Date(customer.lastVisit) : null,
+          lifetimeValue: customer.lifetimeValue || "0",
+          ownerId: ownerId,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        };
+        
+        await customersRef.add(customerData);
+        customerCount++;
       }
-    } else if (exportData.orders && exportData.orders.length > 0) {
-      // Import orders without customers
-      const ordersToInsert = exportData.orders.map((o: any) => ({
-        customerId: null,
-        tableNumber: o.tableNumber,
-        guests: o.guests,
-        type: o.type,
-        status: o.status,
-        total: o.total || "0",
-        createdAt: o.createdAt ? new Date(o.createdAt) : new Date(),
-      }));
-      const insertedOrders = await db.insert(orders).values(ordersToInsert).returning();
-      console.log(`✓ Imported ${insertedOrders.length} orders`);
+      console.log(`✓ Imported ${customerCount} customers`);
+    }
 
-      // Import order items (simplified - may need dish mapping)
-      if (exportData.orderItems && exportData.orderItems.length > 0) {
-        const allDishes = await db.select().from(dishes);
-        const orderMap = new Map();
-        exportData.orders.forEach((oldOrder: any, index: number) => {
-          if (insertedOrders[index]) {
-            orderMap.set(oldOrder.id, insertedOrders[index].id);
-          }
-        });
-
-        const orderItemsToInsert = exportData.orderItems
-          .map((oi: any) => {
-            const newOrderId = orderMap.get(oi.orderId);
-            const oldDish = exportData.dishes.find((d: any) => d.id === oi.dishId);
-            const dish = oldDish ? allDishes.find(d => d.name === oldDish.name) : null;
-            
-            if (!newOrderId || !dish) return null;
-
-            return {
-              orderId: newOrderId,
-              dishId: dish.id,
-              quantity: oi.quantity,
-              price: oi.price,
-              notes: oi.notes || null,
-            };
-          })
-          .filter((oi: any) => oi !== null);
-
-        await db.insert(orderItems).values(orderItemsToInsert);
-        console.log(`✓ Imported ${orderItemsToInsert.length} order items`);
+    // Import tables
+    if (exportData.tables && exportData.tables.length > 0) {
+      const tablesRef = db.collection(COLLECTIONS.TABLES);
+      let tableCount = 0;
+      
+      for (const table of exportData.tables) {
+        const tableData = {
+          number: table.number,
+          capacity: table.capacity,
+          status: table.status,
+          ownerId: ownerId,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        };
+        
+        await tablesRef.add(tableData);
+        tableCount++;
       }
+      console.log(`✓ Imported ${tableCount} tables`);
+    }
+
+    // Import ingredients
+    if (exportData.ingredients && exportData.ingredients.length > 0) {
+      const ingredientsRef = db.collection(COLLECTIONS.INGREDIENTS);
+      let ingredientCount = 0;
+      
+      for (const ingredient of exportData.ingredients) {
+        const ingredientData = {
+          name: ingredient.name,
+          quantity: ingredient.quantity,
+          unit: ingredient.unit,
+          minQuantity: ingredient.minQuantity,
+          ownerId: ownerId,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        };
+        
+        await ingredientsRef.add(ingredientData);
+        ingredientCount++;
+      }
+      console.log(`✓ Imported ${ingredientCount} ingredients`);
     }
 
     console.log("\n✓ Data import complete!");
+    console.log("\nNote: Orders and order items are not imported to avoid data conflicts.");
+    console.log("Please create new orders through the application.");
   } catch (error) {
     console.error("Import error:", error);
     if (error instanceof Error) {

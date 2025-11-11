@@ -93,6 +93,11 @@ export class StorageContext {
     };
   }
 
+  async getOrdersByTableNumber(tableNumber: string) {
+    const allOrders = await this.getAllOrders();
+    return allOrders.filter((order: any) => order.tableNumber === tableNumber);
+  }
+
   async createOrder(order: any) {
     const orderData = this.addOwner({
       ...order,
