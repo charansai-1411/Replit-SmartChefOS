@@ -22,25 +22,26 @@ import NotFound from "@/pages/not-found";
 
 function ProtectedLayout({ children }: { children: React.ReactNode }) {
   return (
-    // Temporarily disabled authentication - remove ProtectedRoute wrapper
-    <SidebarProvider
-      style={
-        {
-          "--sidebar-width": "16rem",
-          "--sidebar-width-icon": "3rem",
-        } as React.CSSProperties
-      }
-    >
-      <div className="flex h-screen w-full">
-        <AppSidebar />
-        <div className="flex flex-col flex-1 overflow-hidden">
-          <Topbar />
-          <main className="flex-1 overflow-auto custom-scrollbar bg-background">
-            {children}
-          </main>
+    <ProtectedRoute>
+      <SidebarProvider
+        style={
+          {
+            "--sidebar-width": "16rem",
+            "--sidebar-width-icon": "3rem",
+          } as React.CSSProperties
+        }
+      >
+        <div className="flex h-screen w-full">
+          <AppSidebar />
+          <div className="flex flex-col flex-1 overflow-hidden">
+            <Topbar />
+            <main className="flex-1 overflow-auto custom-scrollbar bg-background">
+              {children}
+            </main>
+          </div>
         </div>
-      </div>
-    </SidebarProvider>
+      </SidebarProvider>
+    </ProtectedRoute>
   );
 }
 
