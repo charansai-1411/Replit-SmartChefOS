@@ -21,6 +21,7 @@ import {
 
 // Authentication middleware
 function requireAuth(req: Request, res: Response, next: NextFunction) {
+  console.log("Auth check - Session ID:", req.sessionID, "Owner ID:", req.session.ownerId);
   if (!req.session.ownerId) {
     return res.status(401).json({ error: "Authentication required" });
   }
@@ -34,11 +35,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const validatedData = insertRestaurantOwnerSchema.parse(req.body);
       const owner = await storage.registerOwner(validatedData);
       req.session.ownerId = owner.id;
+      console.log("User registered - Owner ID:", owner.id, "Session ID:", req.sessionID);
       res.status(201).json(owner);
     } catch (error) {
       if (error instanceof Error && error.message === 'Email already registered') {
         return res.status(409).json({ error: error.message });
       }
+      console.error("Registration error:", error);
       res.status(400).json({ error: "Invalid registration data" });
     }
   });
@@ -53,8 +56,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       req.session.ownerId = owner.id;
+      console.log("User logged in - Owner ID:", owner.id, "Session ID:", req.sessionID);
       res.json(owner);
     } catch (error) {
+      console.error("Login error:", error);
       res.status(400).json({ error: "Invalid login data" });
     }
   });
@@ -69,6 +74,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.get("/api/auth/me", async (req, res) => {
+    console.log("Checking auth - Session ID:", req.sessionID, "Owner ID:", req.session.ownerId);
     if (!req.session.ownerId) {
       return res.status(401).json({ error: "Not authenticated" });
     }
@@ -76,10 +82,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const owner = await storage.getOwnerById(req.session.ownerId);
       if (!owner) {
+        console.log("Owner not found for ID:", req.session.ownerId);
         return res.status(404).json({ error: "Owner not found" });
       }
+      console.log("Auth check successful for owner:", owner.id);
       res.json(owner);
     } catch (error) {
+      console.error("Error fetching owner data:", error);
       res.status(500).json({ error: "Failed to fetch owner data" });
     }
   });
@@ -106,10 +115,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Dishes API (Protected)
   app.get("/api/dishes", requireAuth, async (req, res) => {
     try {
+      console.log("Fetching dishes for owner:", req.session.ownerId);
       const ctx = createStorageContext(req.session.ownerId!);
       const dishes = await ctx.getAllDishes();
+      console.log("Dishes fetched:", dishes.length, "dishes");
       res.json(dishes);
     } catch (error) {
+      console.error("Error fetching dishes:", error);
       res.status(500).json({ error: "Failed to fetch dishes" });
     }
   });
@@ -129,11 +141,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/dishes", requireAuth, async (req, res) => {
     try {
+      console.log("Creating dish for owner:", req.session.ownerId);
       const ctx = createStorageContext(req.session.ownerId!);
       const validatedData = insertDishSchema.parse(req.body);
       const dish = await ctx.createDish(validatedData);
+      console.log("Dish created:", dish.id, "with ownerId:", dish.ownerId);
       res.status(201).json(dish);
     } catch (error) {
+      console.error("Error creating dish:", error);
       res.status(400).json({ error: "Invalid dish data" });
     }
   });
@@ -165,20 +180,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Orders API (Protected)
   app.get("/api/orders", requireAuth, async (req, res) => {
     try {
+      console.log("Fetching orders for owner:", req.session.ownerId);
       const ctx = createStorageContext(req.session.ownerId!);
       const orders = await ctx.getAllOrders();
+      console.log("Orders fetched successfully:", orders.length);
       res.json(orders);
     } catch (error) {
+      console.error("Error fetching orders:", error);
       res.status(500).json({ error: "Failed to fetch orders" });
     }
   });
 
   app.get("/api/orders/active", requireAuth, async (req, res) => {
     try {
+      console.log("Fetching active orders for owner:", req.session.ownerId);
       const ctx = createStorageContext(req.session.ownerId!);
       const orders = await ctx.getActiveOrders();
+      console.log("Active orders fetched successfully:", orders.length);
       res.json(orders);
     } catch (error) {
+      console.error("Error fetching active orders:", error);
       res.status(500).json({ error: "Failed to fetch active orders" });
     }
   });

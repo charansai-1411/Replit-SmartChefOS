@@ -68,10 +68,8 @@ export class StorageContext {
 
   // Orders
   async getAllOrders() {
-    const snapshot = await this.getOwnerQuery(COLLECTIONS.ORDERS)
-      .orderBy('createdAt', 'desc')
-      .get();
-    return snapshot.docs.map(doc => {
+    const snapshot = await this.getOwnerQuery(COLLECTIONS.ORDERS).get();
+    const orders = snapshot.docs.map(doc => {
       const data = doc.data();
       return {
         id: doc.id,
@@ -79,6 +77,8 @@ export class StorageContext {
         createdAt: data.createdAt?.toDate() || new Date(),
       };
     });
+    // Sort in memory to avoid requiring composite index
+    return orders.sort((a: any, b: any) => b.createdAt.getTime() - a.createdAt.getTime());
   }
 
   async getOrder(id: string) {
@@ -138,12 +138,9 @@ export class StorageContext {
   }
 
   async getActiveOrders() {
-    const snapshot = await this.getOwnerQuery(COLLECTIONS.ORDERS)
-      .where('status', 'in', ['pending', 'confirmed', 'preparing'])
-      .orderBy('createdAt', 'desc')
-      .get();
+    const snapshot = await this.getOwnerQuery(COLLECTIONS.ORDERS).get();
     
-    return snapshot.docs.map(doc => {
+    const orders = snapshot.docs.map(doc => {
       const data = doc.data();
       return {
         id: doc.id,
@@ -151,28 +148,42 @@ export class StorageContext {
         createdAt: data.createdAt?.toDate() || new Date(),
       };
     });
+    
+    // Filter and sort in memory to avoid requiring composite index
+    return orders
+      .filter((order: any) => ['pending', 'confirmed', 'preparing'].includes(order.status))
+      .sort((a: any, b: any) => b.createdAt.getTime() - a.createdAt.getTime());
   }
 
   async getKOTOrders() {
-    const snapshot = await this.getOwnerQuery(COLLECTIONS.ORDERS)
-      .where('kitchenStatus', 'in', ['pending', 'sent', 'preparing'])
-      .orderBy('createdAt', 'asc')
-      .get();
+    const snapshot = await this.getOwnerQuery(COLLECTIONS.ORDERS).get();
+    
+    const allOrders = snapshot.docs.map(doc => {
+      const data = doc.data();
+      return {
+        id: doc.id,
+        ...data,
+        createdAt: data.createdAt?.toDate() || new Date(),
+      };
+    });
+    
+    // Filter in memory to avoid requiring composite index
+    const filteredOrders = allOrders.filter((order: any) => 
+      ['pending', 'sent', 'preparing'].includes(order.kitchenStatus)
+    );
     
     const orders = await Promise.all(
-      snapshot.docs.map(async (doc) => {
-        const data = doc.data();
-        const items = await this.getOrderItems(doc.id);
+      filteredOrders.map(async (order: any) => {
+        const items = await this.getOrderItems(order.id);
         return {
-          id: doc.id,
-          ...data,
-          createdAt: data.createdAt?.toDate() || new Date(),
+          ...order,
           items,
         };
       })
     );
     
-    return orders;
+    // Sort in ascending order by createdAt
+    return orders.sort((a: any, b: any) => a.createdAt.getTime() - b.createdAt.getTime());
   }
 
   // Order Items (no ownerId needed, verified through order)
