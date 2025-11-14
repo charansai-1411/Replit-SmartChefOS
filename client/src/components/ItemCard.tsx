@@ -68,53 +68,53 @@ export function ItemCard({ id, name, price, image, veg, available = true, quanti
           alt={name}
           className="w-full h-full object-cover"
         />
-        <div className="absolute top-3 left-3">
-          <div className={`w-4 h-4 rounded-full ${available ? 'bg-green-500' : 'bg-red-500'}`} />
+        <div className="absolute top-2 left-2">
+          <div className={`w-3 h-3 rounded-full ${available ? 'bg-green-500' : 'bg-red-500'}`} />
         </div>
-        <div className="absolute top-3 right-3">
-          <Badge variant="secondary" className="rounded-md text-sm px-3 py-1">
-            {veg ? '🌿 Veg' : '🍖 Non-Veg'}
+        <div className="absolute top-2 right-2">
+          <Badge variant="secondary" className="rounded-md text-xs px-2 py-0.5">
+            {veg ? '🌿' : '🍖'}
           </Badge>
         </div>
       </div>
       
-      <div className="p-5">
-        <h3 className="font-semibold text-lg mb-2" data-testid={`text-dish-name-${id}`}>{name}</h3>
-        <p className="text-2xl font-bold tabular-nums mb-4" data-testid={`text-price-${id}`}>₹{price.toFixed(2)}</p>
+      <div className="p-3">
+        <h3 className="font-medium text-sm mb-1 line-clamp-2" data-testid={`text-dish-name-${id}`}>{name}</h3>
+        <p className="text-lg font-bold tabular-nums mb-3" data-testid={`text-price-${id}`}>₹{price.toFixed(2)}</p>
         
-        <div className="mt-4">
+        <div className="mt-3">
           {quantity === 0 ? (
             <Button 
-              className="w-full rounded-xl h-12 text-base" 
-              size="lg"
+              className="w-full rounded-xl h-10 text-sm" 
+              size="sm"
               disabled={!available}
               onClick={handleAddClick}
               data-testid={`button-add-${id}`}
             >
-              <Plus className="w-5 h-5 mr-2" />
-              {hasVariants ? 'Select Variant' : 'Add to Cart'}
+              <Plus className="w-4 h-4 mr-1" />
+              {hasVariants ? 'Select' : 'Add'}
             </Button>
           ) : (
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
               <Button 
                 size="icon" 
                 variant="outline"
-                className="rounded-xl h-12 w-12"
+                className="rounded-xl h-10 w-10"
                 onClick={() => handleQuantityChange(quantity - 1)}
                 data-testid={`button-decrease-${id}`}
               >
-                <Minus className="w-5 h-5" />
+                <Minus className="w-4 h-4" />
               </Button>
-              <span className="flex-1 text-center font-bold text-xl tabular-nums" data-testid={`text-quantity-${id}`}>
+              <span className="flex-1 text-center font-bold text-lg tabular-nums" data-testid={`text-quantity-${id}`}>
                 {quantity}
               </span>
               <Button 
                 size="icon"
-                className="rounded-xl h-12 w-12"
+                className="rounded-xl h-10 w-10"
                 onClick={() => handleQuantityChange(quantity + 1)}
                 data-testid={`button-increase-${id}`}
               >
-                <Plus className="w-5 h-5" />
+                <Plus className="w-4 h-4" />
               </Button>
             </div>
           )}

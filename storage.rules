@@ -1,29 +1,50 @@
 rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
-    // Default: deny all
+    
+    // Default deny all
     match /{allPaths=**} {
       allow read, write: if false;
     }
 
-    // Restaurant logos - only admins can write
-    match /restaurants/{restaurantId}/logo.{ext} {
-      allow read: if request.auth != null && request.auth.token.restaurantId == restaurantId;
+    // Restaurant dish images - NEW ENHANCED MODEL
+    match /restaurants/{restaurantId}/dishes/{dishId}/{imageFile} {
+      // Allow reads for authenticated users (can be made public if needed)
+      allow read: if request.auth != null;
+      
+      // Allow writes only for restaurant members
       allow write: if request.auth != null 
-                   && request.auth.token.restaurantId == restaurantId 
-                   && request.auth.token.role == 'admin'
-                   && request.resource.size < 5 * 1024 * 1024 // 5MB limit
-                   && request.resource.contentType.matches('image/.*');
+                   && isRestaurantMember(restaurantId)
+                   && validateImageUpload();
     }
 
-    // Menu item images
-    match /restaurants/{restaurantId}/menu/{itemId}.{ext} {
-      allow read: if request.auth != null && request.auth.token.restaurantId == restaurantId;
+    // Restaurant profile images
+    match /restaurants/{restaurantId}/profile/{imageFile} {
+      allow read: if request.auth != null;
       allow write: if request.auth != null 
-                   && request.auth.token.restaurantId == restaurantId 
-                   && (request.auth.token.role == 'admin' || request.auth.token.role == 'manager')
-                   && request.resource.size < 5 * 1024 * 1024
-                   && request.resource.contentType.matches('image/.*');
+                   && isRestaurantMember(restaurantId)
+                   && validateImageUpload();
+    }
+
+    // User profile images
+    match /users/{userId}/profile/{imageFile} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null 
+                   && request.auth.uid == userId
+                   && validateImageUpload();
+    }
+
+    // Helper functions
+    function isRestaurantMember(restaurantId) {
+      return request.auth.token.restaurantIds != null 
+             && request.auth.token.restaurantIds.hasAny([restaurantId]);
+    }
+
+    function validateImageUpload() {
+      return request.resource != null
+             && request.resource.size < 10 * 1024 * 1024  // 10MB limit
+             && request.resource.contentType != null
+             && request.resource.contentType.matches('image/.*');
     }
   }
 }

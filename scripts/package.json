@@ -1,0 +1,35 @@
+{
+  "name": "smartchefos-firestore-scripts",
+  "version": "1.0.0",
+  "description": "Migration and utility scripts for SmartChefOS Firestore implementation",
+  "main": "firestore-migration.js",
+  "scripts": {
+    "migrate": "node firestore-migration.js",
+    "migrate:dry-run": "node firestore-migration.js --dry-run",
+    "migrate:customers": "node firestore-migration.js --collection=customers",
+    "migrate:dishes": "node firestore-migration.js --collection=dishes",
+    "migrate:orders": "node firestore-migration.js --collection=orders",
+    "migrate:restaurants": "node firestore-migration.js --collection=restaurants",
+    "seed": "node import-seed-data.js",
+    "seed:overwrite": "node import-seed-data.js --overwrite",
+    "seed:clear": "node import-seed-data.js --clear",
+    "validate": "node firestore-migration.js --validate"
+  },
+  "dependencies": {
+    "firebase-admin": "^12.0.0",
+    "libphonenumber-js": "^1.10.51",
+    "dotenv": "^16.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0"
+  },
+  "keywords": [
+    "firebase",
+    "firestore",
+    "migration",
+    "restaurant",
+    "pos"
+  ],
+  "author": "SmartChefOS Team",
+  "license": "MIT"
+}

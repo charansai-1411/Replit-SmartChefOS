@@ -1,5 +1,6 @@
 import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
+import { parsePhoneNumber, isValidPhoneNumber } from 'libphonenumber-js';
 import {
   validateEmail,
   validatePhone,
@@ -461,3 +462,289 @@ export const revokeInvite = functions.https.onCall(async (data, context) => {
     message: 'Invite revoked successfully',
   };
 });
+
+// ============================================================================
+// PRODUCTION-READY FIRESTORE FUNCTIONS
+// ============================================================================
+
+const db = admin.firestore();
+
+/**
+ * Normalize phone number to E.164 format
+ */
+function normalizePhoneNumber(phone: string, defaultCountry = 'IN'): string {
+  try {
+    if (!phone) return '';
+    
+    // If already in E.164 format, validate and return
+    if (phone.startsWith('+')) {
+      if (isValidPhoneNumber(phone)) {
+        return phone;
+      }
+      throw new Error('Invalid phone number format');
+    }
+    
+    // Parse with default country
+    const phoneNumber = parsePhoneNumber(phone, defaultCountry as any);
+    if (!phoneNumber || !phoneNumber.isValid()) {
+      throw new Error('Invalid phone number');
+    }
+    
+    return phoneNumber.format('E.164');
+  } catch (error) {
+    throw new functions.https.HttpsError('invalid-argument', `Invalid phone number: ${phone}`);
+  }
+}
+
+/**
+ * Convert monetary value to minor units (paise for INR)
+ */
+function toMinorUnits(amount: number, currency = 'INR'): number {
+  // Most currencies use 2 decimal places (100 minor units = 1 major unit)
+  // Some currencies like JPY use 0 decimal places
+  const minorUnitsMap: { [key: string]: number } = {
+    'INR': 100, // 1 INR = 100 paise
+    'USD': 100, // 1 USD = 100 cents
+    'EUR': 100, // 1 EUR = 100 cents
+    'JPY': 1,   // 1 JPY = 1 yen (no minor units)
+  };
+  
+  const multiplier = minorUnitsMap[currency] || 100;
+  return Math.round(amount * multiplier);
+}
+
+/**
+ * Validate order totals server-side
+ */
+async function validateOrderTotals(orderId: string, orderData: any): Promise<boolean> {
+  try {
+    // Get all order items
+    const orderItemsSnapshot = await db.collection('orderItems')
+      .where('orderId', '==', orderId)
+      .get();
+    
+    let calculatedItemsTotal = 0;
+    
+    orderItemsSnapshot.forEach(doc => {
+      const item = doc.data();
+      calculatedItemsTotal += item.totalPrice;
+    });
+    
+    // Validate totals
+    const expectedGrandTotal = calculatedItemsTotal + orderData.taxTotal - orderData.discountTotal;
+    
+    return Math.abs(orderData.grandTotal - expectedGrandTotal) < 1; // Allow 1 paise difference for rounding
+  } catch (error) {
+    console.error('Error validating order totals:', error);
+    return false;
+  }
+}
+
+/**
+ * Firestore Trigger: Order Created
+ * - Validate order totals
+ * - Update customer lifetime value and last visit
+ * - Update restaurant analytics
+ */
+export const onOrderCreate = functions.firestore
+  .document('orders/{orderId}')
+  .onCreate(async (snap, context) => {
+    const order = snap.data();
+    const orderId = context.params.orderId;
+    
+    try {
+      // Validate order totals
+      const isValid = await validateOrderTotals(orderId, order);
+      if (!isValid) {
+        console.error(`Invalid order totals for order ${orderId}`);
+        // Mark order as invalid but don't fail the function
+        await snap.ref.update({
+          status: 'invalid',
+          invalidReason: 'Total calculation mismatch',
+          updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+        return;
+      }
+      
+      // Update customer if exists
+      if (order.customerId) {
+        const customerRef = db.collection('customers').doc(order.customerId);
+        
+        await db.runTransaction(async (transaction) => {
+          const customerDoc = await transaction.get(customerRef);
+          
+          if (customerDoc.exists) {
+            const customerData = customerDoc.data()!;
+            const currentLifetimeValue = customerData.lifetimeValue || 0;
+            const newLifetimeValue = currentLifetimeValue + order.grandTotal;
+            
+            transaction.update(customerRef, {
+              lifetimeValue: newLifetimeValue,
+              lastVisit: admin.firestore.FieldValue.serverTimestamp(),
+              updatedAt: admin.firestore.FieldValue.serverTimestamp()
+            });
+          }
+        });
+      }
+      
+      // Update restaurant analytics (optional - implement if needed)
+      // This could include daily sales, order counts, etc.
+      
+      console.log(`Order ${orderId} processed successfully`);
+      
+    } catch (error) {
+      console.error(`Error processing order ${orderId}:`, error);
+      // Don't throw error to avoid infinite retries
+    }
+  });
+
+/**
+ * Firestore Trigger: Order Updated
+ * - Handle status changes
+ * - Adjust customer lifetime value for cancellations
+ */
+export const onOrderUpdate = functions.firestore
+  .document('orders/{orderId}')
+  .onUpdate(async (change, context) => {
+    const beforeData = change.before.data();
+    const afterData = change.after.data();
+    const orderId = context.params.orderId;
+    
+    try {
+      // Handle order cancellation
+      if (beforeData.status !== 'cancelled' && afterData.status === 'cancelled') {
+        if (afterData.customerId) {
+          const customerRef = db.collection('customers').doc(afterData.customerId);
+          
+          await db.runTransaction(async (transaction) => {
+            const customerDoc = await transaction.get(customerRef);
+            
+            if (customerDoc.exists) {
+              const customerData = customerDoc.data()!;
+              const currentLifetimeValue = customerData.lifetimeValue || 0;
+              const newLifetimeValue = Math.max(0, currentLifetimeValue - afterData.grandTotal);
+              
+              transaction.update(customerRef, {
+                lifetimeValue: newLifetimeValue,
+                updatedAt: admin.firestore.FieldValue.serverTimestamp()
+              });
+            }
+          });
+        }
+      }
+      
+      // Handle order completion for analytics
+      if (beforeData.status !== 'paid' && afterData.status === 'paid') {
+        // Update restaurant daily analytics, etc.
+        console.log(`Order ${orderId} completed`);
+      }
+      
+    } catch (error) {
+      console.error(`Error updating order ${orderId}:`, error);
+    }
+  });
+
+/**
+ * Firestore Trigger: Dish Updated
+ * - Invalidate caches
+ * - Update search indexes (if using external search)
+ */
+export const onDishUpdate = functions.firestore
+  .document('dishes/{dishId}')
+  .onUpdate(async (change, context) => {
+    const beforeData = change.before.data();
+    const afterData = change.after.data();
+    const dishId = context.params.dishId;
+    
+    try {
+      // Log availability changes
+      if (beforeData.isAvailable !== afterData.isAvailable) {
+        console.log(`Dish ${dishId} availability changed: ${beforeData.isAvailable} -> ${afterData.isAvailable}`);
+      }
+      
+      // Update search index (implement if using Algolia or similar)
+      // await updateSearchIndex('dishes', dishId, afterData);
+      
+      // Invalidate cache (implement if using Redis or similar)
+      // await invalidateCache(`dish:${dishId}`);
+      
+    } catch (error) {
+      console.error(`Error processing dish update ${dishId}:`, error);
+    }
+  });
+
+/**
+ * HTTP Function: Validate and normalize phone number
+ */
+export const normalizePhone = functions.https.onCall(async (data: any, context: any) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError('unauthenticated', 'Authentication required');
+  }
+  
+  const { phone, country = 'IN' } = data;
+  
+  if (!phone) {
+    throw new functions.https.HttpsError('invalid-argument', 'Phone number is required');
+  }
+  
+  try {
+    const normalizedPhone = normalizePhoneNumber(phone, country);
+    return { normalizedPhone };
+  } catch (error: any) {
+    throw new functions.https.HttpsError('invalid-argument', error.message);
+  }
+});
+
+/**
+ * HTTP Function: Convert amount to minor units
+ */
+export const convertToMinorUnits = functions.https.onCall(async (data: any, context: any) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError('unauthenticated', 'Authentication required');
+  }
+  
+  const { amount, currency = 'INR' } = data;
+  
+  if (typeof amount !== 'number' || amount < 0) {
+    throw new functions.https.HttpsError('invalid-argument', 'Valid amount is required');
+  }
+  
+  const minorUnits = toMinorUnits(amount, currency);
+  return { minorUnits, currency };
+});
+
+/**
+ * Scheduled Function: Cleanup old data (runs daily)
+ */
+export const cleanupOldData = functions.pubsub
+  .schedule('0 2 * * *') // Run at 2 AM daily
+  .timeZone('Asia/Kolkata')
+  .onRun(async (context) => {
+    try {
+      // Delete orders older than 2 years
+      const twoYearsAgo = new Date();
+      twoYearsAgo.setFullYear(twoYearsAgo.getFullYear() - 2);
+      
+      const oldOrdersQuery = db.collection('orders')
+        .where('createdAt', '<', twoYearsAgo)
+        .limit(500); // Process in batches
+      
+      const oldOrdersSnapshot = await oldOrdersQuery.get();
+      
+      if (!oldOrdersSnapshot.empty) {
+        const batch = db.batch();
+        
+        oldOrdersSnapshot.forEach(doc => {
+          batch.delete(doc.ref);
+        });
+        
+        await batch.commit();
+        console.log(`Deleted ${oldOrdersSnapshot.size} old orders`);
+      }
+      
+      // Similar cleanup for other collections if needed
+      
+    } catch (error) {
+      console.error('Error in cleanup job:', error);
+    }
+  });

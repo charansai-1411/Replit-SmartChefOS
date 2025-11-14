@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
+import { ImageUpload } from "@/components/ImageUpload";
 import {
   Select,
   SelectContent,
@@ -54,9 +55,26 @@ import {
   Search,
   Filter,
   MoreVertical,
+  Timer,
+  Power,
+  PowerOff,
+  Utensils,
+  Bike,
 } from "lucide-react";
 
 type MenuPlatform = "restaurant" | "zomato" | "swiggy" | "other";
+
+interface PlatformAvailability {
+  isAvailable: boolean;
+  offlineUntil?: Date;
+  offlineReason?: string;
+}
+
+interface OfflineDuration {
+  label: string;
+  value: number; // hours
+  type: 'hours' | 'business_day' | 'custom';
+}
 
 interface MenuItem {
   id: string;
@@ -68,6 +86,7 @@ interface MenuItem {
   isVeg: boolean;
   isAvailable: boolean;
   image?: string;
+  images?: string[]; // Array of image URLs
   variants?: ItemVariant[];
   addons?: ItemAddon[];
   tags: string[];
@@ -78,6 +97,7 @@ interface MenuItem {
   servingInfo?: string;
   preparationTime?: number;
   platforms: MenuPlatform[];
+  platformAvailability: Record<MenuPlatform, PlatformAvailability>;
 }
 
 interface ItemVariant {
@@ -252,9 +272,31 @@ export default function MenuManagement() {
   const [showAddCategory, setShowAddCategory] = useState(false);
   const [showChargesDialog, setShowChargesDialog] = useState(false);
   const [editingItem, setEditingItem] = useState<MenuItem | null>(null);
+  const [showOfflineDialog, setShowOfflineDialog] = useState(false);
+  const [offlineDialogData, setOfflineDialogData] = useState<{
+    itemId: string;
+    itemName: string;
+    platform: MenuPlatform;
+    currentStatus: boolean;
+  } | null>(null);
+
+  // Platform-specific availability state
+  const [platformAvailabilityState, setPlatformAvailabilityState] = useState<Record<string, Record<MenuPlatform, PlatformAvailability>>>({});
+  
+  // Offline duration options and state
+  const offlineDurationOptions: OfflineDuration[] = [
+    { label: "2 Hours", value: 2, type: "hours" },
+    { label: "8 Hours", value: 8, type: "hours" },
+    { label: "Next Business Day", value: 16, type: "business_day" },
+    { label: "Custom", value: 0, type: "custom" },
+  ];
+
+  const [customOfflineHours, setCustomOfflineHours] = useState(1);
+  const [selectedOfflineDuration, setSelectedOfflineDuration] = useState<OfflineDuration>(offlineDurationOptions[0]);
 
   // Form states
-  const [newItem, setNewItem] = useState<Partial<MenuItem>>({
+  const [newItem, setNewItem] = useState<MenuItem>({
+    id: "",
     name: "",
     description: "",
     category: "",
@@ -262,9 +304,16 @@ export default function MenuManagement() {
     price: 0,
     isVeg: true,
     isAvailable: true,
+    images: [],
     tags: [],
     gst: 5,
     platforms: [activePlatform],
+    platformAvailability: {
+      restaurant: { isAvailable: true },
+      zomato: { isAvailable: true },
+      swiggy: { isAvailable: true },
+      other: { isAvailable: true },
+    },
   });
 
   const [newCategory, setNewCategory] = useState({
@@ -321,7 +370,8 @@ export default function MenuManagement() {
       price: newItem.price.toString(),
       category: newItem.category || "Uncategorized",
       veg: newItem.isVeg ?? true,
-      image: newItem.image || null,
+      image: newItem.images && newItem.images.length > 0 ? newItem.images[0] : null, // Use first image as primary
+      images: newItem.images || [], // Include all images
       available: true,
     };
 
@@ -330,6 +380,7 @@ export default function MenuManagement() {
       
       setShowAddItem(false);
       setNewItem({
+        id: "",
         name: "",
         description: "",
         category: "",
@@ -337,9 +388,16 @@ export default function MenuManagement() {
         price: 0,
         isVeg: true,
         isAvailable: true,
+        images: [],
         tags: [],
         gst: 5,
         platforms: ["restaurant"],
+        platformAvailability: {
+          restaurant: { isAvailable: true },
+          zomato: { isAvailable: true },
+          swiggy: { isAvailable: true },
+          other: { isAvailable: true },
+        },
       });
 
       toast({
@@ -391,7 +449,8 @@ export default function MenuManagement() {
       price: editingItem.price.toString(),
       category: editingItem.category,
       veg: editingItem.isVeg,
-      image: editingItem.image || null,
+      image: editingItem.images && editingItem.images.length > 0 ? editingItem.images[0] : null, // Use first image as primary
+      images: editingItem.images || [], // Include all images
       available: editingItem.isAvailable,
       variants: variants,
     };
@@ -524,6 +583,78 @@ export default function MenuManagement() {
         variant: "destructive",
       });
     }
+  };
+
+  const handlePlatformToggle = (itemId: string, itemName: string, platform: MenuPlatform, currentStatus: boolean) => {
+    if (currentStatus) {
+      // If currently available, show offline dialog
+      setOfflineDialogData({
+        itemId,
+        itemName,
+        platform,
+        currentStatus,
+      });
+      setShowOfflineDialog(true);
+    } else {
+      // If currently offline, turn it back online immediately
+      handleSetPlatformAvailability(itemId, platform, true);
+    }
+  };
+
+  const handleSetPlatformAvailability = async (itemId: string, platform: MenuPlatform, isAvailable: boolean, offlineUntil?: Date) => {
+    // Update platform-specific availability state
+    setPlatformAvailabilityState(prev => ({
+      ...prev,
+      [itemId]: {
+        ...prev[itemId],
+        [platform]: {
+          isAvailable,
+          offlineUntil,
+          offlineReason: isAvailable ? undefined : 'Manual offline',
+        },
+      },
+    }));
+
+    // Show toast notification
+    const statusText = isAvailable ? 'online' : 'offline';
+    const platformText = platform.charAt(0).toUpperCase() + platform.slice(1);
+    const timeText = offlineUntil ? ` until ${offlineUntil.toLocaleString()}` : '';
+    
+    toast({
+      title: `${platformText} Status Updated`,
+      description: `Item is now ${statusText} on ${platformText}${timeText}.`,
+    });
+
+    setShowOfflineDialog(false);
+    setOfflineDialogData(null);
+  };
+
+  const handleConfirmOffline = () => {
+    if (!offlineDialogData) return;
+
+    let offlineUntil: Date | undefined;
+    
+    if (selectedOfflineDuration.type === 'custom') {
+      offlineUntil = new Date(Date.now() + customOfflineHours * 60 * 60 * 1000);
+    } else if (selectedOfflineDuration.type === 'business_day') {
+      // Set to next business day at 9 AM
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      tomorrow.setHours(9, 0, 0, 0);
+      // Skip weekend if it's Saturday or Sunday
+      if (tomorrow.getDay() === 0) tomorrow.setDate(tomorrow.getDate() + 1); // Sunday -> Monday
+      if (tomorrow.getDay() === 6) tomorrow.setDate(tomorrow.getDate() + 2); // Saturday -> Monday
+      offlineUntil = tomorrow;
+    } else {
+      offlineUntil = new Date(Date.now() + selectedOfflineDuration.value * 60 * 60 * 1000);
+    }
+
+    handleSetPlatformAvailability(
+      offlineDialogData.itemId,
+      offlineDialogData.platform,
+      false,
+      offlineUntil
+    );
   };
 
   const handleCopyToPlatform = (itemId: string, platform: MenuPlatform) => {
@@ -671,6 +802,16 @@ export default function MenuManagement() {
     }
   };
 
+  // Get platform availability for an item
+  const getPlatformAvailability = (itemId: string, platform: MenuPlatform): PlatformAvailability => {
+    const itemState = platformAvailabilityState[itemId];
+    if (itemState && itemState[platform]) {
+      return itemState[platform];
+    }
+    // Default to available if no specific state is set
+    return { isAvailable: true };
+  };
+
   // Convert API dishes to MenuItem format for display
   const dishesToMenuItems = (dishes: Dish[]): MenuItem[] => {
     return dishes.map(dish => ({
@@ -685,6 +826,12 @@ export default function MenuManagement() {
       tags: [],
       gst: 5,
       platforms: ["restaurant", "zomato", "swiggy", "other"] as MenuPlatform[],
+      platformAvailability: {
+        restaurant: getPlatformAvailability(dish.id, 'restaurant'),
+        zomato: getPlatformAvailability(dish.id, 'zomato'),
+        swiggy: getPlatformAvailability(dish.id, 'swiggy'),
+        other: getPlatformAvailability(dish.id, 'other'),
+      },
       variants: dish.variants?.map(v => ({
         id: v.id,
         name: v.name,
@@ -707,9 +854,9 @@ export default function MenuManagement() {
 
   const platformIcons = {
     restaurant: <ChefHat className="w-4 h-4" />,
-    zomato: <Package className="w-4 h-4" />,
-    swiggy: <Truck className="w-4 h-4" />,
-    other: <MoreVertical className="w-4 h-4" />,
+    zomato: <Utensils className="w-4 h-4" />,
+    swiggy: <Bike className="w-4 h-4" />,
+    other: <Truck className="w-4 h-4" />,
   };
 
   const platformColors = {
@@ -952,25 +1099,68 @@ export default function MenuManagement() {
                     </Button>
                   </div>
 
-                  {/* Platform badges */}
-                  <div className="flex flex-wrap gap-1">
-                    {(["restaurant", "zomato", "swiggy", "other"] as MenuPlatform[]).map(platform => {
-                      const isActive = item.platforms.includes(platform);
-                      return (
-                        <div
-                          key={platform}
-                          className={`flex items-center gap-1 px-2 py-1 rounded-md text-xs transition-all ${
-                            isActive 
-                              ? `${platformColors[platform].bg} ${platformColors[platform].text}` 
-                              : 'bg-muted text-muted-foreground'
-                          }`}
-                          title={`${isActive ? 'Active' : 'Inactive'} on ${platform}`}
-                        >
-                          {platformIcons[platform]}
-                          {isActive && <span className="text-xs">✓</span>}
-                        </div>
-                      );
-                    })}
+                  {/* Platform availability toggles */}
+                  <div className="space-y-2">
+                    <p className="text-xs font-medium text-muted-foreground">Platform Availability:</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      {(["restaurant", "zomato", "swiggy", "other"] as MenuPlatform[]).map(platform => {
+                        const isOnPlatform = item.platforms.includes(platform);
+                        const platformStatus = item.platformAvailability[platform];
+                        const isAvailable = platformStatus?.isAvailable ?? true;
+                        const offlineUntil = platformStatus?.offlineUntil;
+                        const isExpired = offlineUntil && offlineUntil < new Date();
+                        
+                        if (!isOnPlatform) return null;
+                        
+                        // Auto-enable if expired
+                        if (isExpired && !isAvailable) {
+                          handleSetPlatformAvailability(item.id, platform, true);
+                        }
+                        
+                        const currentStatus = isExpired ? true : isAvailable;
+                        
+                        return (
+                          <div
+                            key={platform}
+                            className={`flex items-center justify-between p-2 rounded-lg border transition-all ${
+                              currentStatus
+                                ? `${platformColors[platform].border} bg-${platform === 'restaurant' ? 'blue' : platform === 'zomato' ? 'red' : platform === 'swiggy' ? 'orange' : 'purple'}-50`
+                                : 'border-muted bg-muted/30'
+                            }`}
+                          >
+                            <div className="flex items-center gap-2">
+                              {platformIcons[platform]}
+                              <div>
+                                <p className="text-xs font-medium capitalize">{platform}</p>
+                                {!currentStatus && offlineUntil && !isExpired && (
+                                  <p className="text-xs text-muted-foreground">
+                                    Until {offlineUntil.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                  </p>
+                                )}
+                                {isExpired && (
+                                  <p className="text-xs text-green-600">Auto-enabled</p>
+                                )}
+                              </div>
+                            </div>
+                            <button
+                              onClick={() => handlePlatformToggle(item.id, item.name, platform, currentStatus)}
+                              className={`p-1 rounded transition-colors ${
+                                currentStatus
+                                  ? 'text-green-600 hover:bg-green-100'
+                                  : 'text-red-600 hover:bg-red-100'
+                              }`}
+                              title={`${currentStatus ? 'Turn off' : 'Turn on'} for ${platform}`}
+                            >
+                              {currentStatus ? (
+                                <Power className="w-4 h-4" />
+                              ) : (
+                                <PowerOff className="w-4 h-4" />
+                              )}
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
                 </CardContent>
               </Card>
@@ -1117,6 +1307,19 @@ export default function MenuManagement() {
                 </div>
               </div>
             </div>
+
+            <Separator />
+
+            {/* Image Upload Section */}
+            <ImageUpload
+              images={newItem.images || []}
+              onImagesChange={(images) => setNewItem({ ...newItem, images })}
+              restaurantId="restaurant123" // Replace with actual restaurant ID from auth
+              dishId={newItem.id || 'temp'}
+              maxImages={5}
+            />
+
+            <Separator />
 
             <div className="space-y-2">
               <Label>Available on Platforms</Label>
@@ -1316,6 +1519,20 @@ export default function MenuManagement() {
                     </div>
                   </div>
                 </div>
+              </div>
+
+              <Separator />
+
+              {/* Image Upload Section */}
+              <div className="space-y-4">
+                <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Images</h3>
+                <ImageUpload
+                  images={editingItem.images || []}
+                  onImagesChange={(images) => setEditingItem({ ...editingItem, images })}
+                  restaurantId="restaurant123" // Replace with actual restaurant ID from auth
+                  dishId={editingItem.id}
+                  maxImages={5}
+                />
               </div>
 
               <Separator />
@@ -1687,6 +1904,111 @@ export default function MenuManagement() {
               }} className="rounded-xl">
                 <Save className="w-4 h-4 mr-2" />
                 Save Changes
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Offline Duration Dialog */}
+      <Dialog open={showOfflineDialog} onOpenChange={setShowOfflineDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Timer className="w-5 h-5" />
+              Set Offline Duration
+            </DialogTitle>
+            <DialogDescription>
+              {offlineDialogData && (
+                <>
+                  How long should <strong>{offlineDialogData.itemName}</strong> be offline on{" "}
+                  <strong className="capitalize">{offlineDialogData.platform}</strong>?
+                </>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            {/* Duration Options */}
+            <div className="space-y-3">
+              <Label>Select Duration</Label>
+              <div className="space-y-2">
+                {offlineDurationOptions.map((option) => (
+                  <div
+                    key={option.label}
+                    className={`flex items-center justify-between p-3 border rounded-xl cursor-pointer transition-all ${
+                      selectedOfflineDuration.label === option.label
+                        ? 'border-primary bg-primary/5'
+                        : 'border-border hover:border-primary/50'
+                    }`}
+                    onClick={() => setSelectedOfflineDuration(option)}
+                  >
+                    <div className="flex items-center gap-3">
+                      <input
+                        type="radio"
+                        checked={selectedOfflineDuration.label === option.label}
+                        onChange={() => setSelectedOfflineDuration(option)}
+                        className="text-primary"
+                      />
+                      <div>
+                        <p className="font-medium">{option.label}</p>
+                        {option.type === 'hours' && (
+                          <p className="text-xs text-muted-foreground">
+                            Until {new Date(Date.now() + option.value * 60 * 60 * 1000).toLocaleString()}
+                          </p>
+                        )}
+                        {option.type === 'business_day' && (
+                          <p className="text-xs text-muted-foreground">
+                            Until next business day at 9:00 AM
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                    <Clock className="w-4 h-4 text-muted-foreground" />
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Custom Duration Input */}
+            {selectedOfflineDuration.type === 'custom' && (
+              <div className="space-y-2">
+                <Label htmlFor="custom-hours">Custom Duration (Hours)</Label>
+                <Input
+                  id="custom-hours"
+                  type="number"
+                  min="1"
+                  max="168"
+                  value={customOfflineHours}
+                  onChange={(e) => setCustomOfflineHours(parseInt(e.target.value) || 1)}
+                  placeholder="Enter hours"
+                  className="rounded-xl"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Will be back online at:{" "}
+                  {new Date(Date.now() + customOfflineHours * 60 * 60 * 1000).toLocaleString()}
+                </p>
+              </div>
+            )}
+
+            {/* Action Buttons */}
+            <div className="flex gap-2 pt-4">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setShowOfflineDialog(false);
+                  setOfflineDialogData(null);
+                }}
+                className="flex-1 rounded-xl"
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleConfirmOffline}
+                className="flex-1 rounded-xl bg-red-600 hover:bg-red-700"
+              >
+                <PowerOff className="w-4 h-4 mr-2" />
+                Set Offline
               </Button>
             </div>
           </div>

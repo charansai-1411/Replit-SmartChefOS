@@ -1,0 +1,228 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Default deny all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Restaurants collection
+    match /restaurants/{restaurantId} {
+      allow read: if isMemberOfRestaurant(restaurantId);
+      allow create: if request.auth != null 
+                    && request.resource.data.ownerId == request.auth.uid
+                    && validateRestaurantData(request.resource.data);
+      allow update: if isOwnerOrManager(restaurantId) 
+                    && validateRestaurantData(request.resource.data);
+      allow delete: if isOwner(restaurantId);
+    }
+
+    // Dishes collection - NEW ENHANCED MODEL
+    match /dishes/{dishId} {
+      allow read: if isMemberOfRestaurant(resource.data.restaurantId);
+      allow create: if isMemberOfRestaurant(request.resource.data.restaurantId)
+                    && validateDishData(request.resource.data);
+      allow update: if isMemberOfRestaurant(resource.data.restaurantId)
+                    && validateDishData(request.resource.data)
+                    && validateDishUpdate(resource.data, request.resource.data);
+      allow delete: if isOwnerOrManager(resource.data.restaurantId);
+    }
+
+    // Platform-specific menus (optional)
+    match /platformMenus/{platform}/{restaurantId}/items/{dishId} {
+      allow read: if isMemberOfRestaurant(restaurantId);
+      allow create, update: if isMemberOfRestaurant(restaurantId)
+                           && validatePlatformMenuData(request.resource.data);
+      allow delete: if isOwnerOrManager(restaurantId);
+    }
+
+    // Customers collection
+    match /customers/{customerId} {
+      allow read: if isMemberOfRestaurant(resource.data.restaurantId);
+      allow create: if isMemberOfRestaurant(request.resource.data.restaurantId)
+                    && validateCustomerData(request.resource.data);
+      allow update: if isMemberOfRestaurant(resource.data.restaurantId)
+                    && validateCustomerData(request.resource.data);
+      allow delete: if isOwnerOrManager(resource.data.restaurantId);
+    }
+
+    // Orders collection
+    match /orders/{orderId} {
+      allow read: if isMemberOfRestaurant(resource.data.restaurantId);
+      allow create: if isMemberOfRestaurant(request.resource.data.restaurantId)
+                    && validateOrderData(request.resource.data);
+      allow update: if isMemberOfRestaurant(resource.data.restaurantId)
+                    && validateOrderData(request.resource.data);
+      allow delete: if isOwnerOrManager(resource.data.restaurantId);
+    }
+
+    // Order Items collection
+    match /orderItems/{orderItemId} {
+      allow read: if isMemberOfRestaurant(getOrderRestaurantId(resource.data.orderId));
+      allow create: if isMemberOfRestaurant(getOrderRestaurantId(request.resource.data.orderId))
+                    && validateOrderItemData(request.resource.data);
+      allow update: if isMemberOfRestaurant(getOrderRestaurantId(resource.data.orderId))
+                    && validateOrderItemData(request.resource.data);
+      allow delete: if isOwnerOrManager(getOrderRestaurantId(resource.data.orderId));
+    }
+
+    // Tables collection
+    match /tables/{tableId} {
+      allow read: if isMemberOfRestaurant(resource.data.restaurantId);
+      allow create: if isMemberOfRestaurant(request.resource.data.restaurantId)
+                    && validateTableData(request.resource.data);
+      allow update: if isMemberOfRestaurant(resource.data.restaurantId)
+                    && validateTableData(request.resource.data);
+      allow delete: if isOwnerOrManager(resource.data.restaurantId);
+    }
+
+    // Ingredients collection
+    match /ingredients/{ingredientId} {
+      allow read: if isMemberOfRestaurant(resource.data.restaurantId);
+      allow create: if isMemberOfRestaurant(request.resource.data.restaurantId)
+                    && validateIngredientData(request.resource.data);
+      allow update: if isMemberOfRestaurant(resource.data.restaurantId)
+                    && validateIngredientData(request.resource.data);
+      allow delete: if isOwnerOrManager(resource.data.restaurantId);
+    }
+
+    // Restaurant Owners collection
+    match /restaurantOwners/{ownerId} {
+      allow read: if request.auth != null && request.auth.uid == ownerId;
+      allow create: if request.auth != null && request.auth.uid == ownerId
+                    && validateOwnerData(request.resource.data);
+      allow update: if request.auth != null && request.auth.uid == ownerId
+                    && validateOwnerData(request.resource.data);
+      allow delete: if request.auth != null && request.auth.uid == ownerId;
+    }
+
+    // Helper functions
+    function isMemberOfRestaurant(restaurantId) {
+      return request.auth != null && (
+        // Owner check
+        exists(/databases/$(database)/documents/restaurants/$(restaurantId)) &&
+        get(/databases/$(database)/documents/restaurants/$(restaurantId)).data.ownerId == request.auth.uid
+        ||
+        // Staff check via custom claims
+        (request.auth.token.restaurantIds != null && 
+         request.auth.token.restaurantIds.hasAny([restaurantId]))
+      );
+    }
+
+    function isOwner(restaurantId) {
+      return request.auth != null &&
+             exists(/databases/$(database)/documents/restaurants/$(restaurantId)) &&
+             get(/databases/$(database)/documents/restaurants/$(restaurantId)).data.ownerId == request.auth.uid;
+    }
+
+    function isOwnerOrManager(restaurantId) {
+      return request.auth != null && (
+        isOwner(restaurantId) ||
+        (request.auth.token.role != null && 
+         request.auth.token.role in ['owner', 'manager'] &&
+         request.auth.token.restaurantIds != null && 
+         request.auth.token.restaurantIds.hasAny([restaurantId]))
+      );
+    }
+
+    function getOrderRestaurantId(orderId) {
+      return get(/databases/$(database)/documents/orders/$(orderId)).data.restaurantId;
+    }
+
+    // Data validation functions
+    function validateRestaurantData(data) {
+      return data.keys().hasAll(['name', 'ownerId', 'address', 'phone', 'timezone']) &&
+             data.name is string && data.name.size() > 0 &&
+             data.ownerId is string && data.ownerId.size() > 0 &&
+             data.address is string && data.address.size() > 0 &&
+             data.phone is string && data.phone.matches('^\\+[1-9]\\d{1,14}$') &&
+             data.timezone is string && data.timezone.size() > 0;
+    }
+
+    // ENHANCED DISH VALIDATION
+    function validateDishData(data) {
+      return data.keys().hasAll(['restaurantId', 'name', 'priceMinor', 'category', 'availability']) &&
+             data.restaurantId is string && data.restaurantId.size() > 0 &&
+             data.name is string && data.name.size() > 0 &&
+             data.priceMinor is number && data.priceMinor >= 0 &&
+             data.category is string && data.category.size() > 0 &&
+             validateAvailabilityMap(data.availability) &&
+             (data.images == null || validateImageArray(data.images));
+    }
+
+    function validateAvailabilityMap(availability) {
+      return availability is map &&
+             availability.keys().hasAll(['restaurant', 'zomato', 'swiggy', 'other']) &&
+             availability.restaurant is bool &&
+             availability.zomato is bool &&
+             availability.swiggy is bool &&
+             availability.other is bool;
+    }
+
+    function validateImageArray(images) {
+      return images is list &&
+             images.size() <= 10 &&
+             images.hasOnly([string]) &&
+             images.hasAll([string]);
+    }
+
+    function validateDishUpdate(oldData, newData) {
+      // Ensure restaurantId cannot be changed
+      return oldData.restaurantId == newData.restaurantId;
+    }
+
+    function validatePlatformMenuData(data) {
+      return data.keys().hasAll(['dishId', 'platformPrice', 'platformAvailable']) &&
+             data.dishId is string && data.dishId.size() > 0 &&
+             data.platformPrice is number && data.platformPrice >= 0 &&
+             data.platformAvailable is bool;
+    }
+
+    function validateCustomerData(data) {
+      return data.keys().hasAll(['restaurantId', 'name', 'phone', 'lifetimeValueMinor']) &&
+             data.restaurantId is string && data.restaurantId.size() > 0 &&
+             data.name is string && data.name.size() > 0 &&
+             data.phone is string && data.phone.matches('^\\+[1-9]\\d{1,14}$') &&
+             data.lifetimeValueMinor is number && data.lifetimeValueMinor >= 0;
+    }
+
+    function validateOrderData(data) {
+      return data.keys().hasAll(['restaurantId', 'status', 'itemsTotalMinor', 'taxTotalMinor', 'discountTotalMinor', 'grandTotalMinor']) &&
+             data.restaurantId is string && data.restaurantId.size() > 0 &&
+             data.status is string && data.status in ['open', 'paid', 'cancelled', 'preparing', 'served'] &&
+             data.itemsTotalMinor is number && data.itemsTotalMinor >= 0 &&
+             data.taxTotalMinor is number && data.taxTotalMinor >= 0 &&
+             data.discountTotalMinor is number && data.discountTotalMinor >= 0 &&
+             data.grandTotalMinor is number && data.grandTotalMinor >= 0;
+    }
+
+    function validateOrderItemData(data) {
+      return data.keys().hasAll(['orderId', 'dishId', 'name', 'qty', 'unitPriceMinor', 'totalPriceMinor']) &&
+             data.orderId is string && data.orderId.size() > 0 &&
+             data.dishId is string && data.dishId.size() > 0 &&
+             data.name is string && data.name.size() > 0 &&
+             data.qty is number && data.qty > 0 &&
+             data.unitPriceMinor is number && data.unitPriceMinor >= 0 &&
+             data.totalPriceMinor is number && data.totalPriceMinor >= 0;
+    }
+
+    function validateTableData(data) {
+      return data.keys().hasAll(['restaurantId', 'number']) &&
+             data.restaurantId is string && data.restaurantId.size() > 0 &&
+             data.number is string && data.number.size() > 0;
+    }
+
+    function validateIngredientData(data) {
+      return data.keys().hasAll(['name']) &&
+             data.name is string && data.name.size() > 0;
+    }
+
+    function validateOwnerData(data) {
+      return data.keys().hasAll(['uid', 'email', 'role']) &&
+             data.uid is string && data.uid.size() > 0 &&
+             data.email is string && data.email.matches('.*@.*\\..*') &&
+             data.role is string && data.role in ['owner', 'manager', 'staff'];
+    }
+  }
+}
